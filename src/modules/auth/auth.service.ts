@@ -20,6 +20,7 @@ import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
 import { hashOtp, generateOtp } from '../../shared/utils/crypto.util';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { AuthTokens, UserResponse } from './interfaces/auth-responses.interface';
+import { EmailService } from '../email/email.service';
 import type { User } from '@prisma/client';
 
 const BCRYPT_ROUNDS = 12;
@@ -35,9 +36,10 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{ message: string }> {
+  async register(dto: RegisterDto): Promise<{ message: string; accessToken: string; devOtp?: string }> {
     const existing = await this.authRepository.findUserByEmail(dto.email);
     if (existing) {
       throw new ConflictException('Email already registered');
@@ -52,9 +54,18 @@ export class AuthService {
       phone: dto.phone,
     });
 
-    await this.sendEmailOtp(user, 'email_verification');
+    const otp = await this.sendEmailOtp(user, 'email_verification');
 
-    return { message: 'Verification OTP sent to your email' };
+    // Short-lived token so client can immediately call POST /auth/verify-email
+    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+
+    const isDev = this.config.get<string>('nodeEnv') !== 'production';
+    return {
+      message: 'Verification OTP sent to your email',
+      accessToken,
+      ...(isDev && { devOtp: otp }),
+    };
   }
 
   async verifyEmail(userId: string, dto: VerifyOtpDto): Promise<AuthTokens & { user: UserResponse }> {
@@ -115,13 +126,18 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string; devOtp?: string }> {
     const user = await this.authRepository.findUserByEmail(dto.email);
+    let otp: string | undefined;
     // Always return success to prevent user enumeration
     if (user && !user.deletedAt) {
-      await this.sendEmailOtp(user, 'password_reset');
+      otp = await this.sendEmailOtp(user, 'password_reset');
     }
-    return { message: 'If that email exists, a reset OTP has been sent' };
+    const isDev = this.config.get<string>('nodeEnv') !== 'production';
+    return {
+      message: 'If that email exists, a reset OTP has been sent',
+      ...(isDev && otp && { devOtp: otp }),
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
@@ -139,7 +155,7 @@ export class AuthService {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  private async sendEmailOtp(user: User, purpose: string): Promise<void> {
+  private async sendEmailOtp(user: User, purpose: string): Promise<string> {
     const otp = generateOtp();
     const otpHash = hashOtp(otp);
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
@@ -151,8 +167,14 @@ export class AuthService {
       expiresAt,
     });
 
-    // Phase 3: replace with SendGrid email dispatch
+    if (purpose === 'password_reset') {
+      await this.emailService.sendPasswordResetOtp(user.email, user.name, otp);
+    } else {
+      await this.emailService.sendVerificationOtp(user.email, user.name, otp);
+    }
+
     this.logger.log(`[DEV] OTP for ${user.email} (${purpose}): ${otp}`);
+    return otp;
   }
 
   private async validateOtp(userId: string, purpose: string, otp: string): Promise<void> {
