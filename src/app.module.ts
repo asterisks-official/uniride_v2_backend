@@ -1,10 +1,92 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
+import configuration from './config/configuration';
+import { envValidationSchema } from './config/env.validation';
+import { PrismaModule } from './database/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { RidesModule } from './modules/rides/rides.module';
+import { MatchingModule } from './modules/matching/matching.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
+import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
+import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
+import { RideGateway } from './gateways/ride.gateway';
+import { NotificationProcessor } from './jobs/processors/notification.processor';
+import { RideExpiryProcessor } from './jobs/processors/ride-expiry.processor';
+import { TrustScoreProcessor } from './jobs/processors/trust-score.processor';
+import {
+  QUEUE_NOTIFICATIONS,
+  QUEUE_RIDE_EXPIRY,
+  QUEUE_TRUST_SCORE,
+  QUEUE_RIDE_COMPLETION,
+  QUEUE_ANONYMIZATION,
+} from './jobs/queue.constants';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validationSchema: envValidationSchema,
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: config.get<number>('throttle.ttl', 60000),
+            limit: config.get<number>('throttle.limit', 100),
+          },
+        ],
+      }),
+    }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('redis.host'),
+          port: config.get<number>('redis.port'),
+          password: config.get<string>('redis.password'),
+        },
+      }),
+    }),
+    BullModule.registerQueue(
+      { name: QUEUE_NOTIFICATIONS },
+      { name: QUEUE_RIDE_EXPIRY },
+      { name: QUEUE_TRUST_SCORE },
+      { name: QUEUE_RIDE_COMPLETION },
+      { name: QUEUE_ANONYMIZATION },
+    ),
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    RidesModule,
+    MatchingModule,
+    ChatModule,
+    NotificationsModule,
+    RatingsModule,
+    ReportsModule,
+    UploadsModule,
+    AdminModule,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    RideGateway,
+    NotificationProcessor,
+    RideExpiryProcessor,
+    TrustScoreProcessor,
+  ],
 })
 export class AppModule {}
