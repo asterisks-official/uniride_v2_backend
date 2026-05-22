@@ -1,0 +1,395 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  PASSENGER
+  RIDER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RideType {
+  OFFER
+  REQUEST
+}
+
+enum RideStatus {
+  SEARCHING
+  MATCHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum GenderPreference {
+  ANY
+  MALE_ONLY
+  FEMALE_ONLY
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+  LOCATION_SHARE
+}
+
+enum NotificationType {
+  RIDE_REQUEST
+  REQUEST_ACCEPTED
+  REQUEST_DECLINED
+  RIDE_STARTED
+  RIDE_COMPLETED
+  RATING_RECEIVED
+  VERIFICATION_APPROVED
+  VERIFICATION_REJECTED
+  SYSTEM
+}
+
+enum ReportType {
+  HARASSMENT
+  FAKE_PROFILE
+  UNSAFE_DRIVING
+  NO_SHOW
+  SCAM
+  OTHER
+}
+
+enum ReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  name              String
+  phone             String?
+  profilePictureUrl String?   @map("profile_picture_url")
+  university        String?
+  studentIdNumber   String?   @map("student_id_number")
+  bio               String?
+  role              UserRole  @default(PASSENGER)
+  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
+  isPhoneVerified   Boolean   @default(false) @map("is_phone_verified")
+  isSuspended       Boolean   @default(false) @map("is_suspended")
+  suspendedReason   String?   @map("suspended_reason")
+  deletedAt         DateTime? @map("deleted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  riderProfile      RiderProfile?
+  stats             UserStats?
+  devices           UserDevice[]
+  refreshTokens     RefreshToken[]
+  otpVerifications  OtpVerification[]
+  ridesAsRider      Ride[]            @relation("RiderRides")
+  ridesAsPassenger  Ride[]            @relation("PassengerRides")
+  rideRequests      RideRequest[]
+  ratingsGiven      Rating[]          @relation("RatingsGiven")
+  ratingsReceived   Rating[]          @relation("RatingsReceived")
+  notifications     Notification[]
+  reportsSubmitted  Report[]          @relation("ReportsSubmitted")
+  reportsAgainst    Report[]          @relation("ReportsAgainst")
+  payments          Payment[]
+
+  @@map("users")
+}
+
+model RiderProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique @map("user_id")
+  vehicleType        String             @map("vehicle_type")
+  vehicleMake        String             @map("vehicle_make")
+  vehicleModel       String             @map("vehicle_model")
+  vehicleYear        Int                @map("vehicle_year")
+  vehicleColor       String             @map("vehicle_color")
+  licensePlate       String             @map("license_plate")
+  licenseDocUrl      String             @map("license_doc_url")
+  vehiclePhotoUrl    String             @map("vehicle_photo_url")
+  studentIdDocUrl    String?            @map("student_id_doc_url")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  adminNote          String?            @map("admin_note")
+  reviewedAt         DateTime?          @map("reviewed_at")
+  reviewedBy         String?            @map("reviewed_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([verificationStatus])
+  @@map("rider_profiles")
+}
+
+model UserStats {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  ridesCompleted   Int      @default(0) @map("rides_completed")
+  ridesCancelled   Int      @default(0) @map("rides_cancelled")
+  totalRatings     Int      @default(0) @map("total_ratings")
+  averageRating    Float    @default(0) @map("average_rating")
+  trustScore       Int      @default(50) @map("trust_score")
+  totalEarnings    Decimal  @default(0) @map("total_earnings") @db.Decimal(10, 2)
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_stats")
+}
+
+model UserDevice {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  fcmToken   String   @map("fcm_token")
+  deviceType String   @map("device_type")
+  appVersion String?  @map("app_version")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fcmToken])
+  @@map("user_devices")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  tokenHash   String    @unique @map("token_hash")
+  deviceId    String?   @map("device_id")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model OtpVerification {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  otpHash     String   @map("otp_hash")
+  purpose     String
+  attempts    Int      @default(0)
+  expiresAt   DateTime @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("otp_verifications")
+}
+
+model Ride {
+  id               String           @id @default(uuid())
+  riderId          String           @map("rider_id")
+  passengerId      String?          @map("passenger_id")
+  type             RideType
+  status           RideStatus       @default(SEARCHING)
+  originAddress    String           @map("origin_address")
+  originLat        Float            @map("origin_lat")
+  originLng        Float            @map("origin_lng")
+  destAddress      String           @map("dest_address")
+  destLat          Float            @map("dest_lat")
+  destLng          Float            @map("dest_lng")
+  fare             Decimal          @map("fare") @db.Decimal(10, 2)
+  seatsAvailable   Int              @default(1) @map("seats_available")
+  genderPref       GenderPreference @default(ANY) @map("gender_pref")
+  scheduledAt      DateTime         @map("scheduled_at")
+  startedAt        DateTime?        @map("started_at")
+  completedAt      DateTime?        @map("completed_at")
+  cancelledAt      DateTime?        @map("cancelled_at")
+  cancelReason     String?          @map("cancel_reason")
+  riderConfirmed   Boolean          @default(false) @map("rider_confirmed")
+  passengerConfirmed Boolean        @default(false) @map("passenger_confirmed")
+  hasSos           Boolean          @default(false) @map("has_sos")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  rider      User          @relation("RiderRides", fields: [riderId], references: [id])
+  passenger  User?         @relation("PassengerRides", fields: [passengerId], references: [id])
+  requests   RideRequest[]
+  messages   RideMessage[]
+  ratings    Rating[]
+  payments   Payment[]
+
+  @@index([status, scheduledAt])
+  @@index([originLat, originLng])
+  @@index([riderId])
+  @@map("rides")
+}
+
+model RideRequest {
+  id          String        @id @default(uuid())
+  rideId      String        @map("ride_id")
+  passengerId String        @map("passenger_id")
+  status      RequestStatus @default(PENDING)
+  message     String?
+  expiresAt   DateTime      @map("expires_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  ride      Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passenger User @relation(fields: [passengerId], references: [id])
+
+  @@unique([rideId, passengerId])
+  @@index([passengerId])
+  @@map("ride_requests")
+}
+
+model RideMessage {
+  id        String      @id @default(uuid())
+  rideId    String      @map("ride_id")
+  senderId  String      @map("sender_id")
+  type      MessageType @default(TEXT)
+  content   String
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId, createdAt])
+  @@map("ride_messages")
+}
+
+model Rating {
+  id          String   @id @default(uuid())
+  rideId      String   @map("ride_id")
+  raterId     String   @map("rater_id")
+  rateeId     String   @map("ratee_id")
+  score       Int
+  review      String?
+  tags        String[]
+  isRevealed  Boolean  @default(false) @map("is_revealed")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  ride  Ride @relation(fields: [rideId], references: [id])
+  rater User @relation("RatingsGiven", fields: [raterId], references: [id])
+  ratee User @relation("RatingsReceived", fields: [rateeId], references: [id])
+
+  @@unique([rideId, raterId])
+  @@index([rateeId])
+  @@map("ratings")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  type        NotificationType
+  title       String
+  body        String
+  data        Json?
+  isRead      Boolean          @default(false) @map("is_read")
+  deliveredAt DateTime?        @map("delivered_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model Report {
+  id           String         @id @default(uuid())
+  reporterId   String         @map("reporter_id")
+  reportedId   String         @map("reported_id")
+  rideId       String?        @map("ride_id")
+  type         ReportType
+  severity     ReportSeverity @default(MEDIUM)
+  status       ReportStatus   @default(OPEN)
+  description  String
+  adminNote    String?        @map("admin_note")
+  resolvedAt   DateTime?      @map("resolved_at")
+  resolvedBy   String?        @map("resolved_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  reporter User @relation("ReportsSubmitted", fields: [reporterId], references: [id])
+  reported User @relation("ReportsAgainst", fields: [reportedId], references: [id])
+
+  @@index([status, severity, createdAt(sort: Desc)])
+  @@map("reports")
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  rideId          String        @map("ride_id")
+  payerId         String        @map("payer_id")
+  amount          Decimal       @map("amount") @db.Decimal(10, 2)
+  currency        String        @default("BDT")
+  status          PaymentStatus @default(PENDING)
+  gatewayProvider String?       @map("gateway_provider")
+  gatewayTxId     String?       @map("gateway_tx_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  ride  Ride @relation(fields: [rideId], references: [id])
+  payer User @relation(fields: [payerId], references: [id])
+
+  @@map("payments")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  adminId    String   @map("admin_id")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([adminId])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+model AppConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_config")
+}
