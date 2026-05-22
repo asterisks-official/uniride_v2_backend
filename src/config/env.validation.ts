@@ -22,8 +22,8 @@ export const envValidationSchema = Joi.object({
   FIREBASE_PRIVATE_KEY: Joi.string().optional(),
   FIREBASE_CLIENT_EMAIL: Joi.string().email().optional(),
 
-  SENDGRID_API_KEY: Joi.string().optional(),
-  SENDGRID_FROM_EMAIL: Joi.string().email().optional(),
+  RESEND_API_KEY: Joi.string().optional(),
+  RESEND_FROM_EMAIL: Joi.string().optional(),
 
   SENTRY_DSN: Joi.string().optional(),
   ENCRYPTION_KEY: Joi.string().length(64).required(),

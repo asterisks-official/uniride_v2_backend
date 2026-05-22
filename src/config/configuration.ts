@@ -34,9 +34,9 @@ export default () => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   },
 
-  sendgrid: {
-    apiKey: process.env.SENDGRID_API_KEY,
-    fromEmail: process.env.SENDGRID_FROM_EMAIL,
+  resend: {
+    apiKey: process.env.RESEND_API_KEY,
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev',
   },
 
   sentry: {

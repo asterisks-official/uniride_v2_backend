@@ -1,22 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
+  private readonly resend: Resend | null = null;
   private readonly from: string;
   private readonly isDev: boolean;
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('sendgrid.apiKey');
-    this.from = this.config.get<string>('sendgrid.fromEmail', 'noreply@uniride.app');
+    const apiKey = this.config.get<string>('resend.apiKey');
+    this.from = this.config.get<string>('resend.fromEmail', 'onboarding@resend.dev');
     this.isDev = this.config.get<string>('nodeEnv') !== 'production';
 
-    if (apiKey && !apiKey.startsWith('REPLACE')) {
-      sgMail.setApiKey(apiKey);
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
     } else {
-      this.logger.warn('SendGrid API key not configured — emails will be logged only');
+      this.logger.warn('RESEND_API_KEY not set — emails will be logged only (dev mode)');
     }
   }
 
@@ -53,16 +54,17 @@ export class EmailService {
       this.logger.log(`[DEV EMAIL] To: ${msg.to} | Subject: ${msg.subject}`);
     }
 
-    const apiKey = this.config.get<string>('sendgrid.apiKey');
-    if (!apiKey || apiKey.startsWith('REPLACE')) {
-      return;
-    }
+    if (!this.resend) return;
 
-    try {
-      await sgMail.send({ from: this.from, ...msg });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to send email to ${msg.to}: ${message}`);
+    const { error } = await this.resend.emails.send({
+      from: this.from,
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+    });
+
+    if (error) {
+      this.logger.error(`Failed to send email to ${msg.to}: ${error.message}`);
     }
   }
 
