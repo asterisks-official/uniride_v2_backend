@@ -10,6 +10,10 @@ export class NotificationsRepository {
     return this.prisma.notification.create({ data });
   }
 
+  async findOne(id: string, userId: string): Promise<Notification | null> {
+    return this.prisma.notification.findFirst({ where: { id, userId } });
+  }
+
   async findByUser(userId: string, skip: number, take: number): Promise<Notification[]> {
     return this.prisma.notification.findMany({
       where: { userId },
@@ -21,6 +25,10 @@ export class NotificationsRepository {
 
   async countByUser(userId: string): Promise<number> {
     return this.prisma.notification.count({ where: { userId } });
+  }
+
+  async countUnread(userId: string): Promise<number> {
+    return this.prisma.notification.count({ where: { userId, isRead: false } });
   }
 
   async markRead(id: string, userId: string): Promise<void> {
@@ -42,6 +50,10 @@ export class NotificationsRepository {
       where: { id },
       data: { deliveredAt: new Date() },
     });
+  }
+
+  async deleteOne(id: string, userId: string): Promise<void> {
+    await this.prisma.notification.deleteMany({ where: { id, userId } });
   }
 
   async findUserFcmTokens(userId: string): Promise<string[]> {

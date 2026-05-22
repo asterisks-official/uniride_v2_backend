@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules
+dist
+coverage
+generated
+.env
+.env.local
+.env.*.local
+keys
+*firebase-adminsdk*.json
+*.log
+logs
+.DS_Store
+Thumbs.db

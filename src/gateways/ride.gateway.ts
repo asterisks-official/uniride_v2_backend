@@ -7,10 +7,11 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { ChatService } from '../modules/chat/chat.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -26,6 +27,7 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly chatService: ChatService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -44,9 +46,9 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
         publicKey: this.configService.get<string>('jwt.publicKey'),
       });
 
-      this.connectedUsers.set(client.id, payload.sub);
-      client.join(`user:${payload.sub}`);
-      this.logger.log(`Client connected: ${client.id} (user ${payload.sub})`);
+      this.connectedUsers.set(client.id, payload.sub as string);
+      client.join(`user:${payload.sub as string}`);
+      this.logger.log(`Client connected: ${client.id} (user ${payload.sub as string})`);
     } catch {
       client.disconnect();
     }
@@ -73,6 +75,26 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { rideId: string },
   ): void {
     client.leave(`ride:${data.rideId}`);
+  }
+
+  @SubscribeMessage('send:message')
+  async handleSendMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { rideId: string; content: string },
+  ): Promise<void> {
+    const senderId = this.connectedUsers.get(client.id);
+    if (!senderId) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const message = await this.chatService.sendMessage(data.rideId, senderId, data.content);
+      this.server.to(`ride:${data.rideId}`).emit('new:message', message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to send message';
+      client.emit('error', { message: msg });
+    }
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {

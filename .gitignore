@@ -10,10 +10,12 @@ coverage
 # Prisma generated client
 /generated/
 
-# Keys
+# Keys and credentials — never commit these
 *.pem
 private.key
 public.key
+keys/
+*firebase-adminsdk*.json
 
 # Logs
 *.log

@@ -1,6 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import type { Ride, RideRequest, Prisma } from '@prisma/client';
+import type { Ride, RideRequest, Prisma, RequestStatus } from '@prisma/client';
+
+const riderSelect = {
+  id: true,
+  name: true,
+  profilePictureUrl: true,
+  stats: { select: { averageRating: true, ridesCompleted: true } },
+} as const;
+
+const passengerSelect = {
+  id: true,
+  name: true,
+  profilePictureUrl: true,
+} as const;
+
+const requestPassengerSelect = {
+  id: true,
+  name: true,
+  profilePictureUrl: true,
+  stats: { select: { averageRating: true, ridesCompleted: true } },
+} as const;
 
 @Injectable()
 export class RidesRepository {
@@ -14,6 +34,17 @@ export class RidesRepository {
     return this.prisma.ride.findUnique({ where: { id } });
   }
 
+  async findWithRelations(id: string) {
+    return this.prisma.ride.findUnique({
+      where: { id },
+      include: {
+        rider: { select: riderSelect },
+        passenger: { select: passengerSelect },
+        _count: { select: { requests: { where: { status: 'PENDING' } } } },
+      },
+    });
+  }
+
   async findMany(args: Prisma.RideFindManyArgs): Promise<Ride[]> {
     return this.prisma.ride.findMany(args);
   }
@@ -25,6 +56,42 @@ export class RidesRepository {
   async update(id: string, data: Prisma.RideUpdateInput): Promise<Ride> {
     return this.prisma.ride.update({ where: { id }, data });
   }
+
+  async findMyRidesAndCount(
+    userId: string,
+    role: 'rider' | 'passenger' | undefined,
+    status: string | undefined,
+    skip: number,
+    take: number,
+  ) {
+    const statusFilter = status ? { status: status as Ride['status'] } : {};
+    const roleFilter =
+      role === 'rider'
+        ? { riderId: userId }
+        : role === 'passenger'
+          ? { passengerId: userId }
+          : { OR: [{ riderId: userId }, { passengerId: userId }] };
+
+    const where: Prisma.RideWhereInput = { ...roleFilter, ...statusFilter };
+
+    const [rides, total] = await this.prisma.$transaction([
+      this.prisma.ride.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { scheduledAt: 'desc' },
+        include: {
+          rider: { select: riderSelect },
+          passenger: { select: passengerSelect },
+        },
+      }),
+      this.prisma.ride.count({ where }),
+    ]);
+
+    return { rides, total };
+  }
+
+  // ── Requests ────────────────────────────────────────────────────────────────
 
   async createRequest(data: Prisma.RideRequestCreateInput): Promise<RideRequest> {
     return this.prisma.rideRequest.create({ data });
@@ -40,7 +107,32 @@ export class RidesRepository {
     return this.prisma.rideRequest.findUnique({ where: { id } });
   }
 
+  async findRequests(rideId: string, status?: RequestStatus) {
+    return this.prisma.rideRequest.findMany({
+      where: { rideId, ...(status ? { status } : {}) },
+      orderBy: { createdAt: 'asc' },
+      include: { passenger: { select: requestPassengerSelect } },
+    });
+  }
+
   async updateRequest(id: string, data: Prisma.RideRequestUpdateInput): Promise<RideRequest> {
     return this.prisma.rideRequest.update({ where: { id }, data });
+  }
+
+  async acceptRequestTx(rideId: string, requestId: string, passengerId: string) {
+    return this.prisma.$transaction([
+      this.prisma.rideRequest.update({
+        where: { id: requestId },
+        data: { status: 'ACCEPTED' },
+      }),
+      this.prisma.ride.update({
+        where: { id: rideId },
+        data: { status: 'MATCHED', passengerId },
+      }),
+      this.prisma.rideRequest.updateMany({
+        where: { rideId, status: 'PENDING', id: { not: requestId } },
+        data: { status: 'DECLINED' },
+      }),
+    ]);
   }
 }

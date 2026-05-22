@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
@@ -15,14 +16,19 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { FirebaseModule } from './modules/firebase/firebase.module';
+import { HealthModule } from './modules/health/health.module';
 import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { RideGateway } from './gateways/ride.gateway';
 import { NotificationProcessor } from './jobs/processors/notification.processor';
 import { RideExpiryProcessor } from './jobs/processors/ride-expiry.processor';
+import { RideCompletionProcessor } from './jobs/processors/ride-completion.processor';
 import { TrustScoreProcessor } from './jobs/processors/trust-score.processor';
+import { CleanupService } from './jobs/cleanup.service';
 import {
   QUEUE_NOTIFICATIONS,
   QUEUE_RIDE_EXPIRY,
@@ -38,6 +44,7 @@ import {
       load: [configuration],
       validationSchema: envValidationSchema,
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -76,7 +83,10 @@ import {
     RatingsModule,
     ReportsModule,
     UploadsModule,
+    PaymentsModule,
     AdminModule,
+    FirebaseModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
@@ -86,7 +96,9 @@ import {
     RideGateway,
     NotificationProcessor,
     RideExpiryProcessor,
+    RideCompletionProcessor,
     TrustScoreProcessor,
+    CleanupService,
   ],
 })
 export class AppModule {}
