@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import type { User, UserStats, Prisma } from '@prisma/client';
+import type { User, UserStats, RiderProfile, Prisma } from '@prisma/client';
 
 @Injectable()
 export class UsersRepository {
@@ -30,5 +30,17 @@ export class UsersRepository {
 
   async createStats(userId: string): Promise<UserStats> {
     return this.prisma.userStats.create({ data: { userId } });
+  }
+
+  async findRiderProfile(userId: string): Promise<RiderProfile | null> {
+    return this.prisma.riderProfile.findUnique({ where: { userId } });
+  }
+
+  async createRiderProfile(data: Prisma.RiderProfileCreateInput): Promise<RiderProfile> {
+    return this.prisma.riderProfile.create({ data });
+  }
+
+  async updateRiderProfile(userId: string, data: Prisma.RiderProfileUpdateInput): Promise<RiderProfile> {
+    return this.prisma.riderProfile.update({ where: { userId }, data });
   }
 }
