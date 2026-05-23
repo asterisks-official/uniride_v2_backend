@@ -11,7 +11,12 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateRiderProfileDto } from './dto/create-rider-profile.dto';
@@ -68,13 +73,19 @@ export class UsersController {
   @Post('me/rider-profile')
   @ApiOperation({ summary: 'Create rider profile — promotes role to RIDER' })
   @ApiResponse({ status: 409, description: 'Rider profile already exists' })
-  createRiderProfile(@CurrentUser() user: JwtPayload, @Body() dto: CreateRiderProfileDto) {
+  createRiderProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateRiderProfileDto,
+  ) {
     return this.usersService.createRiderProfile(user.sub, dto);
   }
 
   @Patch('me/rider-profile')
   @ApiOperation({ summary: 'Update rider profile' })
-  updateRiderProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateRiderProfileDto) {
+  updateRiderProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateRiderProfileDto,
+  ) {
     return this.usersService.updateRiderProfile(user.sub, dto);
   }
 }

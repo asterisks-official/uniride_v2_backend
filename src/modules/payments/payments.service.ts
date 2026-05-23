@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PaymentsRepository } from './payments.repository';
 import { PrismaService } from '../../database/prisma.service';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
 
 @Injectable()
 export class PaymentsService {
@@ -11,7 +18,10 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async getMyPayments(userId: string, query: { page?: number; limit?: number }) {
+  async getMyPayments(
+    userId: string,
+    query: { page?: number; limit?: number },
+  ) {
     const { skip, take, page, limit } = getPaginationParams(query);
     const [payments, total] = await Promise.all([
       this.paymentsRepository.findByPayer(userId, skip, take),
@@ -35,10 +45,12 @@ export class PaymentsService {
   async getPaymentByRide(userId: string, rideId: string) {
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== userId && ride.passengerId !== userId) throw new ForbiddenException();
+    if (ride.riderId !== userId && ride.passengerId !== userId)
+      throw new ForbiddenException();
 
     const payment = await this.paymentsRepository.findByRide(rideId);
-    if (!payment) throw new NotFoundException('No payment record for this ride');
+    if (!payment)
+      throw new NotFoundException('No payment record for this ride');
     return payment;
   }
 }

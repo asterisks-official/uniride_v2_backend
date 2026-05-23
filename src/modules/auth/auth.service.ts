@@ -19,7 +19,10 @@ import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
 import { hashOtp, generateOtp } from '../../shared/utils/crypto.util';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
-import type { AuthTokens, UserResponse } from './interfaces/auth-responses.interface';
+import type {
+  AuthTokens,
+  UserResponse,
+} from './interfaces/auth-responses.interface';
 import { EmailService } from '../email/email.service';
 import type { User } from '@prisma/client';
 
@@ -39,7 +42,9 @@ export class AuthService {
     private readonly emailService: EmailService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{ message: string; accessToken: string; devOtp?: string }> {
+  async register(
+    dto: RegisterDto,
+  ): Promise<{ message: string; accessToken: string; devOtp?: string }> {
     const existing = await this.authRepository.findUserByEmail(dto.email);
     if (existing) {
       throw new ConflictException('Email already registered');
@@ -57,7 +62,11 @@ export class AuthService {
     const otp = await this.sendEmailOtp(user, 'email_verification');
 
     // Short-lived token so client can immediately call POST /auth/verify-email
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
 
     const isDev = this.config.get<string>('nodeEnv') !== 'production';
@@ -68,15 +77,24 @@ export class AuthService {
     };
   }
 
-  async verifyEmail(userId: string, dto: VerifyOtpDto): Promise<AuthTokens & { user: UserResponse }> {
+  async verifyEmail(
+    userId: string,
+    dto: VerifyOtpDto,
+  ): Promise<AuthTokens & { user: UserResponse }> {
     const user = await this.authRepository.findUserById(userId);
     if (!user) throw new NotFoundException('User not found');
-    if (user.isEmailVerified) throw new BadRequestException('Email already verified');
+    if (user.isEmailVerified)
+      throw new BadRequestException('Email already verified');
 
     await this.validateOtp(user.id, 'email_verification', dto.otp);
 
-    const updated = await this.authRepository.updateUser(user.id, { isEmailVerified: true });
-    return { ...(await this.issueTokens(updated)), user: this.toUserResponse(updated) };
+    const updated = await this.authRepository.updateUser(user.id, {
+      isEmailVerified: true,
+    });
+    return {
+      ...(await this.issueTokens(updated)),
+      user: this.toUserResponse(updated),
+    };
   }
 
   async login(dto: LoginDto): Promise<AuthTokens & { user: UserResponse }> {
@@ -87,16 +105,26 @@ export class AuthService {
     if (!passwordMatch) throw new UnauthorizedException('Invalid credentials');
 
     if (user.isSuspended) {
-      throw new ForbiddenException(`Account suspended: ${user.suspendedReason ?? 'contact support'}`);
+      throw new ForbiddenException(
+        `Account suspended: ${user.suspendedReason ?? 'contact support'}`,
+      );
     }
     if (user.deletedAt) throw new ForbiddenException('Account not found');
-    if (!user.isEmailVerified) throw new ForbiddenException('Please verify your email first');
+    if (!user.isEmailVerified)
+      throw new ForbiddenException('Please verify your email first');
 
     if (dto.fcmToken && dto.deviceType) {
-      await this.authRepository.upsertUserDevice(user.id, dto.fcmToken, dto.deviceType);
+      await this.authRepository.upsertUserDevice(
+        user.id,
+        dto.fcmToken,
+        dto.deviceType,
+      );
     }
 
-    return { ...await this.issueTokens(user), user: this.toUserResponse(user) };
+    return {
+      ...(await this.issueTokens(user)),
+      user: this.toUserResponse(user),
+    };
   }
 
   async refreshTokens(dto: RefreshDto): Promise<AuthTokens> {
@@ -126,7 +154,9 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string; devOtp?: string }> {
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+  ): Promise<{ message: string; devOtp?: string }> {
     const user = await this.authRepository.findUserByEmail(dto.email);
     let otp: string | undefined;
     // Always return success to prevent user enumeration
@@ -177,12 +207,19 @@ export class AuthService {
     return otp;
   }
 
-  private async validateOtp(userId: string, purpose: string, otp: string): Promise<void> {
+  private async validateOtp(
+    userId: string,
+    purpose: string,
+    otp: string,
+  ): Promise<void> {
     const record = await this.authRepository.findLatestOtp(userId, purpose);
 
-    if (!record) throw new BadRequestException('No OTP found — request a new one');
-    if (record.attempts >= OTP_MAX_ATTEMPTS) throw new BadRequestException('OTP locked — request a new one');
-    if (record.expiresAt < new Date()) throw new BadRequestException('OTP expired');
+    if (!record)
+      throw new BadRequestException('No OTP found — request a new one');
+    if (record.attempts >= OTP_MAX_ATTEMPTS)
+      throw new BadRequestException('OTP locked — request a new one');
+    if (record.expiresAt < new Date())
+      throw new BadRequestException('OTP expired');
 
     const hash = hashOtp(otp);
     if (hash !== record.otpHash) {
@@ -194,7 +231,11 @@ export class AuthService {
   }
 
   private async issueTokens(user: User): Promise<AuthTokens> {
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
     const accessToken = this.jwtService.sign(payload);
 
     const rawToken = randomBytes(REFRESH_TOKEN_BYTES).toString('hex');

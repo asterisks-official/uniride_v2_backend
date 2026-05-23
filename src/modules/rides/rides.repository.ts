@@ -93,11 +93,16 @@ export class RidesRepository {
 
   // ── Requests ────────────────────────────────────────────────────────────────
 
-  async createRequest(data: Prisma.RideRequestCreateInput): Promise<RideRequest> {
+  async createRequest(
+    data: Prisma.RideRequestCreateInput,
+  ): Promise<RideRequest> {
     return this.prisma.rideRequest.create({ data });
   }
 
-  async findRequest(rideId: string, passengerId: string): Promise<RideRequest | null> {
+  async findRequest(
+    rideId: string,
+    passengerId: string,
+  ): Promise<RideRequest | null> {
     return this.prisma.rideRequest.findUnique({
       where: { rideId_passengerId: { rideId, passengerId } },
     });
@@ -115,11 +120,18 @@ export class RidesRepository {
     });
   }
 
-  async updateRequest(id: string, data: Prisma.RideRequestUpdateInput): Promise<RideRequest> {
+  async updateRequest(
+    id: string,
+    data: Prisma.RideRequestUpdateInput,
+  ): Promise<RideRequest> {
     return this.prisma.rideRequest.update({ where: { id }, data });
   }
 
-  async acceptRequestTx(rideId: string, requestId: string, passengerId: string) {
+  async acceptRequestTx(
+    rideId: string,
+    requestId: string,
+    passengerId: string,
+  ) {
     return this.prisma.$transaction([
       this.prisma.rideRequest.update({
         where: { id: requestId },

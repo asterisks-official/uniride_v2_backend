@@ -15,9 +15,15 @@ import { UpdateRideDto } from './dto/update-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
 import { RequestRideDto } from './dto/request-ride.dto';
 import { RespondRequestDto, RequestAction } from './dto/respond-request.dto';
-import { MyRidesDto, MyRidesRole } from './dto/my-rides.dto';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
-import { QUEUE_RIDE_EXPIRY, QUEUE_RIDE_COMPLETION } from '../../jobs/queue.constants';
+import { MyRidesDto } from './dto/my-rides.dto';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
+import {
+  QUEUE_RIDE_EXPIRY,
+  QUEUE_RIDE_COMPLETION,
+} from '../../jobs/queue.constants';
 import type { RideExpiryJobData } from '../../jobs/processors/ride-expiry.processor';
 import type { RideCompletionJobData } from '../../jobs/processors/ride-completion.processor';
 
@@ -56,10 +62,14 @@ export class RidesService {
     });
 
     const delay = Math.max(0, scheduledAt.getTime() - Date.now());
-    await this.expiryQueue.add('expire', { rideId: ride.id } satisfies RideExpiryJobData, {
-      delay,
-      jobId: `expire-${ride.id}`,
-    });
+    await this.expiryQueue.add(
+      'expire',
+      { rideId: ride.id } satisfies RideExpiryJobData,
+      {
+        delay,
+        jobId: `expire-${ride.id}`,
+      },
+    );
 
     return ride;
   }
@@ -86,18 +96,30 @@ export class RidesService {
     }
 
     if (dto.originLat !== undefined && dto.originLng !== undefined) {
-      where['originLat'] = { gte: dto.originLat - GEO_BOX_DEG, lte: dto.originLat + GEO_BOX_DEG };
-      where['originLng'] = { gte: dto.originLng - GEO_BOX_DEG, lte: dto.originLng + GEO_BOX_DEG };
+      where['originLat'] = {
+        gte: dto.originLat - GEO_BOX_DEG,
+        lte: dto.originLat + GEO_BOX_DEG,
+      };
+      where['originLng'] = {
+        gte: dto.originLng - GEO_BOX_DEG,
+        lte: dto.originLng + GEO_BOX_DEG,
+      };
     }
 
     if (dto.destLat !== undefined && dto.destLng !== undefined) {
-      where['destLat'] = { gte: dto.destLat - GEO_BOX_DEG, lte: dto.destLat + GEO_BOX_DEG };
-      where['destLng'] = { gte: dto.destLng - GEO_BOX_DEG, lte: dto.destLng + GEO_BOX_DEG };
+      where['destLat'] = {
+        gte: dto.destLat - GEO_BOX_DEG,
+        lte: dto.destLat + GEO_BOX_DEG,
+      };
+      where['destLng'] = {
+        gte: dto.destLng - GEO_BOX_DEG,
+        lte: dto.destLng + GEO_BOX_DEG,
+      };
     }
 
     const [rides, total] = await Promise.all([
       this.ridesRepository.findMany({
-        where: where as never,
+        where: where,
         skip,
         take,
         orderBy: { scheduledAt: 'asc' },
@@ -112,7 +134,7 @@ export class RidesService {
           },
         },
       }),
-      this.ridesRepository.count({ where: where as never }),
+      this.ridesRepository.count({ where: where }),
     ]);
 
     return { rides, pagination: buildPaginationMeta(total, page, limit) };
@@ -130,7 +152,7 @@ export class RidesService {
 
   async getMyRides(userId: string, dto: MyRidesDto) {
     const { skip, take, page, limit } = getPaginationParams(dto);
-    const role = dto.role as MyRidesRole | undefined;
+    const role = dto.role;
     const { rides, total } = await this.ridesRepository.findMyRidesAndCount(
       userId,
       role,
@@ -153,12 +175,15 @@ export class RidesService {
 
     if (dto.scheduledAt) {
       const scheduledAt = new Date(dto.scheduledAt);
-      if (scheduledAt <= new Date()) throw new BadRequestException('scheduledAt must be a future date');
+      if (scheduledAt <= new Date())
+        throw new BadRequestException('scheduledAt must be a future date');
     }
 
     return this.ridesRepository.update(rideId, {
       ...(dto.fare !== undefined && { fare: dto.fare }),
-      ...(dto.seatsAvailable !== undefined && { seatsAvailable: dto.seatsAvailable }),
+      ...(dto.seatsAvailable !== undefined && {
+        seatsAvailable: dto.seatsAvailable,
+      }),
       ...(dto.scheduledAt && { scheduledAt: new Date(dto.scheduledAt) }),
       ...(dto.genderPref && { genderPref: dto.genderPref }),
     });
@@ -170,8 +195,14 @@ export class RidesService {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.riderId !== riderId) throw new ForbiddenException();
-    if (ride.status === 'IN_PROGRESS' || ride.status === 'COMPLETED' || ride.status === 'CANCELLED') {
-      throw new ConflictException(`Cannot cancel a ride with status ${ride.status}`);
+    if (
+      ride.status === 'IN_PROGRESS' ||
+      ride.status === 'COMPLETED' ||
+      ride.status === 'CANCELLED'
+    ) {
+      throw new ConflictException(
+        `Cannot cancel a ride with status ${ride.status}`,
+      );
     }
 
     await this.ridesRepository.update(rideId, {
@@ -188,12 +219,16 @@ export class RidesService {
   async requestRide(passengerId: string, rideId: string, dto: RequestRideDto) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId === passengerId) throw new ForbiddenException('Cannot request your own ride');
+    if (ride.riderId === passengerId)
+      throw new ForbiddenException('Cannot request your own ride');
     if (ride.status !== 'SEARCHING') {
       throw new ConflictException('Ride is not accepting requests');
     }
 
-    const existing = await this.ridesRepository.findRequest(rideId, passengerId);
+    const existing = await this.ridesRepository.findRequest(
+      rideId,
+      passengerId,
+    );
     if (existing) throw new ConflictException('Already requested this ride');
 
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -227,7 +262,12 @@ export class RidesService {
 
   // ── Respond to request ─────────────────────────────────────────────────────
 
-  async respondToRequest(riderId: string, rideId: string, requestId: string, dto: RespondRequestDto) {
+  async respondToRequest(
+    riderId: string,
+    rideId: string,
+    requestId: string,
+    dto: RespondRequestDto,
+  ) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.riderId !== riderId) throw new ForbiddenException();
@@ -236,11 +276,17 @@ export class RidesService {
     }
 
     const req = await this.ridesRepository.findRequestById(requestId);
-    if (!req || req.rideId !== rideId) throw new NotFoundException('Request not found');
-    if (req.status !== 'PENDING') throw new ConflictException('Request is no longer pending');
+    if (!req || req.rideId !== rideId)
+      throw new NotFoundException('Request not found');
+    if (req.status !== 'PENDING')
+      throw new ConflictException('Request is no longer pending');
 
     if (dto.action === RequestAction.ACCEPT) {
-      await this.ridesRepository.acceptRequestTx(rideId, requestId, req.passengerId);
+      await this.ridesRepository.acceptRequestTx(
+        rideId,
+        requestId,
+        req.passengerId,
+      );
       await this.notificationsService.send(
         req.passengerId,
         'REQUEST_ACCEPTED',
@@ -309,7 +355,8 @@ export class RidesService {
       if (ride.riderConfirmed) throw new ConflictException('Already confirmed');
       updateData['riderConfirmed'] = true;
     } else {
-      if (ride.passengerConfirmed) throw new ConflictException('Already confirmed');
+      if (ride.passengerConfirmed)
+        throw new ConflictException('Already confirmed');
       updateData['passengerConfirmed'] = true;
     }
 
@@ -322,15 +369,16 @@ export class RidesService {
       updateData['completedAt'] = new Date();
     }
 
-    const result = await this.ridesRepository.update(rideId, updateData as never);
+    const result = await this.ridesRepository.update(rideId, updateData);
 
     if (bothConfirmed) {
-      await this.completionQueue.add(
-        'process',
-        { rideId } satisfies RideCompletionJobData,
-      );
+      await this.completionQueue.add('process', {
+        rideId,
+      } satisfies RideCompletionJobData);
 
-      const notifyBoth = [ride.riderId, ride.passengerId].filter(Boolean) as string[];
+      const notifyBoth = [ride.riderId, ride.passengerId].filter(
+        Boolean,
+      ) as string[];
       await Promise.all(
         notifyBoth.map((uid) =>
           this.notificationsService.send(

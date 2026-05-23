@@ -6,7 +6,9 @@ import type { User, UserStats, RiderProfile, Prisma } from '@prisma/client';
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findById(id: string): Promise<(User & { stats: UserStats | null }) | null> {
+  async findById(
+    id: string,
+  ): Promise<(User & { stats: UserStats | null }) | null> {
     return this.prisma.user.findUnique({
       where: { id, deletedAt: null },
       include: { stats: true },
@@ -36,11 +38,16 @@ export class UsersRepository {
     return this.prisma.riderProfile.findUnique({ where: { userId } });
   }
 
-  async createRiderProfile(data: Prisma.RiderProfileCreateInput): Promise<RiderProfile> {
+  async createRiderProfile(
+    data: Prisma.RiderProfileCreateInput,
+  ): Promise<RiderProfile> {
     return this.prisma.riderProfile.create({ data });
   }
 
-  async updateRiderProfile(userId: string, data: Prisma.RiderProfileUpdateInput): Promise<RiderProfile> {
+  async updateRiderProfile(
+    userId: string,
+    data: Prisma.RiderProfileUpdateInput,
+  ): Promise<RiderProfile> {
     return this.prisma.riderProfile.update({ where: { userId }, data });
   }
 }

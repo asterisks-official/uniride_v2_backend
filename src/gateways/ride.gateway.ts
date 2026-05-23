@@ -30,10 +30,11 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chatService: ChatService,
   ) {}
 
-  async handleConnection(client: Socket): Promise<void> {
+  handleConnection(client: Socket): void {
     try {
+      const auth = client.handshake.auth as Record<string, string | undefined>;
       const token =
-        client.handshake.auth?.token ||
+        auth['token'] ??
         client.handshake.headers?.authorization?.replace('Bearer ', '');
 
       if (!token) {
@@ -41,14 +42,14 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const payload = this.jwtService.verify(token, {
+      const payload: { sub: string } = this.jwtService.verify(token, {
         algorithms: ['RS256'],
         publicKey: this.configService.get<string>('jwt.publicKey'),
       });
 
-      this.connectedUsers.set(client.id, payload.sub as string);
-      client.join(`user:${payload.sub as string}`);
-      this.logger.log(`Client connected: ${client.id} (user ${payload.sub as string})`);
+      this.connectedUsers.set(client.id, payload.sub);
+      void client.join(`user:${payload.sub}`);
+      this.logger.log(`Client connected: ${client.id} (user ${payload.sub})`);
     } catch {
       client.disconnect();
     }
@@ -57,7 +58,9 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(client: Socket): void {
     const userId = this.connectedUsers.get(client.id);
     this.connectedUsers.delete(client.id);
-    this.logger.log(`Client disconnected: ${client.id} (user ${userId ?? 'unknown'})`);
+    this.logger.log(
+      `Client disconnected: ${client.id} (user ${userId ?? 'unknown'})`,
+    );
   }
 
   @SubscribeMessage('join:ride')
@@ -65,7 +68,7 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { rideId: string },
   ): void {
-    client.join(`ride:${data.rideId}`);
+    void client.join(`ride:${data.rideId}`);
     this.logger.log(`Socket ${client.id} joined ride room ${data.rideId}`);
   }
 
@@ -74,7 +77,7 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { rideId: string },
   ): void {
-    client.leave(`ride:${data.rideId}`);
+    void client.leave(`ride:${data.rideId}`);
   }
 
   @SubscribeMessage('send:message')
@@ -89,7 +92,11 @@ export class RideGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const message = await this.chatService.sendMessage(data.rideId, senderId, data.content);
+      const message = await this.chatService.sendMessage(
+        data.rideId,
+        senderId,
+        data.content,
+      );
       this.server.to(`ride:${data.rideId}`).emit('new:message', message);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send message';

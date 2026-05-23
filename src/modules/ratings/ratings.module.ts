@@ -7,7 +7,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { QUEUE_TRUST_SCORE } from '../../jobs/queue.constants';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: QUEUE_TRUST_SCORE }), NotificationsModule],
+  imports: [
+    BullModule.registerQueue({ name: QUEUE_TRUST_SCORE }),
+    NotificationsModule,
+  ],
   controllers: [RatingsController],
   providers: [RatingsService, RatingsRepository],
   exports: [RatingsService],

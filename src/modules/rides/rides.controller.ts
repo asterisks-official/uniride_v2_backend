@@ -12,7 +12,12 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { RidesService } from './rides.service';
 import { CreateRideDto } from './dto/create-ride.dto';
@@ -156,7 +161,9 @@ export class RidesController {
   // ── Confirm completion (rider or passenger) ────────────────────────────────
 
   @Patch(':rideId/confirm')
-  @ApiOperation({ summary: 'Confirm ride completion (both sides must confirm)' })
+  @ApiOperation({
+    summary: 'Confirm ride completion (both sides must confirm)',
+  })
   confirmRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,

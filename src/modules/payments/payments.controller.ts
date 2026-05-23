@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -14,7 +21,11 @@ export class PaymentsController {
 
   @Get('my')
   @ApiOperation({ summary: 'List payments I made (as passenger)' })
-  getMyPayments(@CurrentUser() user: JwtPayload, @Query('page') page?: number, @Query('limit') limit?: number) {
+  getMyPayments(
+    @CurrentUser() user: JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.paymentsService.getMyPayments(user.sub, { page, limit });
   }
 

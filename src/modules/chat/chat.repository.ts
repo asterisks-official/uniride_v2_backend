@@ -6,11 +6,17 @@ import type { RideMessage, Prisma } from '@prisma/client';
 export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createMessage(data: Prisma.RideMessageCreateInput): Promise<RideMessage> {
+  async createMessage(
+    data: Prisma.RideMessageCreateInput,
+  ): Promise<RideMessage> {
     return this.prisma.rideMessage.create({ data });
   }
 
-  async findMessages(rideId: string, skip: number, take: number): Promise<RideMessage[]> {
+  async findMessages(
+    rideId: string,
+    skip: number,
+    take: number,
+  ): Promise<RideMessage[]> {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     return this.prisma.rideMessage.findMany({
       where: { rideId, createdAt: { gte: sevenDaysAgo } },

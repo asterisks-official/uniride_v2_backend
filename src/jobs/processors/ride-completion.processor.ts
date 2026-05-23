@@ -25,7 +25,9 @@ export class RideCompletionProcessor extends WorkerHost {
 
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
     if (!ride || ride.status !== 'COMPLETED' || !ride.passengerId) {
-      this.logger.warn(`Skipping ride-completion job for ride ${rideId}: invalid state`);
+      this.logger.warn(
+        `Skipping ride-completion job for ride ${rideId}: invalid state`,
+      );
       return;
     }
 
@@ -48,7 +50,11 @@ export class RideCompletionProcessor extends WorkerHost {
     await Promise.all([
       this.prisma.userStats.upsert({
         where: { userId: ride.riderId },
-        create: { userId: ride.riderId, ridesCompleted: 1, totalEarnings: ride.fare },
+        create: {
+          userId: ride.riderId,
+          ridesCompleted: 1,
+          totalEarnings: ride.fare,
+        },
         update: {
           ridesCompleted: { increment: 1 },
           totalEarnings: { increment: ride.fare },
@@ -63,10 +69,16 @@ export class RideCompletionProcessor extends WorkerHost {
 
     // Recalculate trust scores
     await Promise.all([
-      this.trustScoreQueue.add('recalculate', { userId: ride.riderId } satisfies TrustScoreJobData),
-      this.trustScoreQueue.add('recalculate', { userId: ride.passengerId } satisfies TrustScoreJobData),
+      this.trustScoreQueue.add('recalculate', {
+        userId: ride.riderId,
+      } satisfies TrustScoreJobData),
+      this.trustScoreQueue.add('recalculate', {
+        userId: ride.passengerId,
+      } satisfies TrustScoreJobData),
     ]);
 
-    this.logger.log(`Ride ${rideId} completion processed — payment + stats updated`);
+    this.logger.log(
+      `Ride ${rideId} completion processed — payment + stats updated`,
+    );
   }
 }

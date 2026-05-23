@@ -21,7 +21,10 @@ export class ReportsController {
 
   @Get('my')
   @ApiOperation({ summary: 'Get reports I have submitted' })
-  getMyReports(@CurrentUser() user: JwtPayload, @Query() query: { page?: number; limit?: number }) {
+  getMyReports(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: { page?: number; limit?: number },
+  ) {
     return this.reportsService.getMyReports(user.sub, query);
   }
 }

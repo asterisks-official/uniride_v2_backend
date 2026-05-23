@@ -1,7 +1,14 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChatRepository } from './chat.repository';
 import { PrismaService } from '../../database/prisma.service';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
 
 @Injectable()
 export class ChatService {
@@ -10,7 +17,11 @@ export class ChatService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async getMessages(rideId: string, userId: string, query: { page?: number; limit?: number }) {
+  async getMessages(
+    rideId: string,
+    userId: string,
+    query: { page?: number; limit?: number },
+  ) {
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.riderId !== userId && ride.passengerId !== userId) {
@@ -21,7 +32,10 @@ export class ChatService {
       this.chatRepository.findMessages(rideId, skip, take),
       this.chatRepository.countMessages(rideId),
     ]);
-    return { messages: messages.reverse(), pagination: buildPaginationMeta(total, page, limit) };
+    return {
+      messages: messages.reverse(),
+      pagination: buildPaginationMeta(total, page, limit),
+    };
   }
 
   async sendMessage(rideId: string, senderId: string, content: string) {
@@ -31,7 +45,9 @@ export class ChatService {
       throw new ForbiddenException('Not a participant of this ride');
     }
     if (ride.status !== 'IN_PROGRESS' && ride.status !== 'MATCHED') {
-      throw new ForbiddenException('Chat is only available for matched or active rides');
+      throw new ForbiddenException(
+        'Chat is only available for matched or active rides',
+      );
     }
     return this.chatRepository.createMessage({
       ride: { connect: { id: rideId } },

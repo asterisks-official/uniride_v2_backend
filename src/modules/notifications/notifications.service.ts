@@ -2,7 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { NotificationsRepository } from './notifications.repository';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
 import { QUEUE_NOTIFICATIONS } from '../../jobs/queue.constants';
 import type { NotificationJobData } from '../../jobs/processors/notification.processor';
 
@@ -51,7 +54,10 @@ export class NotificationsService {
       this.notificationsRepository.findByUser(userId, skip, take),
       this.notificationsRepository.countByUser(userId),
     ]);
-    return { notifications, pagination: buildPaginationMeta(total, page, limit) };
+    return {
+      notifications,
+      pagination: buildPaginationMeta(total, page, limit),
+    };
   }
 
   async getUnreadCount(userId: string) {

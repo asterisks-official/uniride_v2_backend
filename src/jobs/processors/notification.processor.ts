@@ -43,13 +43,18 @@ export class NotificationProcessor extends WorkerHost {
       return;
     }
 
-    const tokens = devices.map((d) => d.fcmToken).filter(Boolean) as string[];
+    const tokens = devices.map((d) => d.fcmToken).filter(Boolean);
 
     // Flatten data to Record<string, string> as FCM requires string values
     const fcmData: Record<string, string> = { type };
     if (data) {
       for (const [k, v] of Object.entries(data)) {
-        if (v !== null && v !== undefined) fcmData[k] = String(v);
+        if (v !== null && v !== undefined) {
+          fcmData[k] =
+            typeof v === 'object'
+              ? JSON.stringify(v)
+              : (v as string | number | boolean).toString();
+        }
       }
     }
 

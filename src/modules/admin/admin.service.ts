@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AdminUsersQueryDto } from './dto/admin-users-query.dto';
@@ -7,7 +11,10 @@ import { VerifyRiderDto, VerifyAction } from './dto/verify-rider.dto';
 import { ResolveReportDto, ResolveAction } from './dto/resolve-report.dto';
 import { AdminRidesQueryDto } from './dto/admin-rides-query.dto';
 import { AdminReportsQueryDto } from './dto/admin-reports-query.dto';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
 
 @Injectable()
 export class AdminService {
@@ -30,12 +37,23 @@ export class AdminService {
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.user.count({ where: { role: 'RIDER', deletedAt: null } }),
       this.prisma.ride.count(),
-      this.prisma.ride.count({ where: { status: { in: ['SEARCHING', 'MATCHED', 'IN_PROGRESS'] } } }),
-      this.prisma.riderProfile.count({ where: { verificationStatus: 'PENDING' } }),
+      this.prisma.ride.count({
+        where: { status: { in: ['SEARCHING', 'MATCHED', 'IN_PROGRESS'] } },
+      }),
+      this.prisma.riderProfile.count({
+        where: { verificationStatus: 'PENDING' },
+      }),
       this.prisma.report.count({ where: { status: 'OPEN' } }),
     ]);
 
-    return { totalUsers, totalRiders, totalRides, activeRides, pendingVerifications, openReports };
+    return {
+      totalUsers,
+      totalRiders,
+      totalRides,
+      activeRides,
+      pendingVerifications,
+      openReports,
+    };
   }
 
   // ── Users ──────────────────────────────────────────────────────────────────
@@ -51,7 +69,8 @@ export class AdminService {
       ];
     }
     if (query.role) where['role'] = query.role;
-    if (query.isSuspended !== undefined) where['isSuspended'] = query.isSuspended;
+    if (query.isSuspended !== undefined)
+      where['isSuspended'] = query.isSuspended;
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -69,7 +88,13 @@ export class AdminService {
           suspendedReason: true,
           isEmailVerified: true,
           createdAt: true,
-          stats: { select: { ridesCompleted: true, averageRating: true, trustScore: true } },
+          stats: {
+            select: {
+              ridesCompleted: true,
+              averageRating: true,
+              trustScore: true,
+            },
+          },
         },
       }),
       this.prisma.user.count({ where: where as never }),
@@ -84,8 +109,16 @@ export class AdminService {
       include: {
         riderProfile: true,
         stats: true,
-        devices: { select: { fcmToken: true, deviceType: true, updatedAt: true } },
-        _count: { select: { ridesAsRider: true, ridesAsPassenger: true, ratingsReceived: true } },
+        devices: {
+          select: { fcmToken: true, deviceType: true, updatedAt: true },
+        },
+        _count: {
+          select: {
+            ridesAsRider: true,
+            ridesAsPassenger: true,
+            ratingsReceived: true,
+          },
+        },
       },
     });
     if (!user) throw new NotFoundException('User not found');
@@ -95,7 +128,8 @@ export class AdminService {
   async suspendUser(adminId: string, userId: string, dto: SuspendUserDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.role === 'SUPER_ADMIN') throw new ForbiddenException('Cannot suspend a super admin');
+    if (user.role === 'SUPER_ADMIN')
+      throw new ForbiddenException('Cannot suspend a super admin');
 
     const updated = await this.prisma.user.update({
       where: { id: userId },
@@ -128,19 +162,32 @@ export class AdminService {
         take,
         orderBy: { createdAt: 'asc' },
         include: {
-          user: { select: { id: true, name: true, email: true, university: true, createdAt: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              university: true,
+              createdAt: true,
+            },
+          },
         },
       }),
-      this.prisma.riderProfile.count({ where: { verificationStatus: 'PENDING' } }),
+      this.prisma.riderProfile.count({
+        where: { verificationStatus: 'PENDING' },
+      }),
     ]);
     return { riders, pagination: buildPaginationMeta(total, page, limit) };
   }
 
   async verifyRider(adminId: string, userId: string, dto: VerifyRiderDto) {
-    const profile = await this.prisma.riderProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.riderProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) throw new NotFoundException('Rider profile not found');
 
-    const newStatus = dto.action === VerifyAction.APPROVE ? 'APPROVED' : 'REJECTED';
+    const newStatus =
+      dto.action === VerifyAction.APPROVE ? 'APPROVED' : 'REJECTED';
 
     const updated = await this.prisma.riderProfile.update({
       where: { userId },
@@ -152,19 +199,37 @@ export class AdminService {
       },
     });
 
-    await this.logAudit(adminId, `RIDER_${newStatus}`, 'RiderProfile', profile.id, null, {
-      status: newStatus,
-      note: dto.note,
-    });
+    await this.logAudit(
+      adminId,
+      `RIDER_${newStatus}`,
+      'RiderProfile',
+      profile.id,
+      null,
+      {
+        status: newStatus,
+        note: dto.note,
+      },
+    );
 
-    const notifType = dto.action === VerifyAction.APPROVE ? 'VERIFICATION_APPROVED' : 'VERIFICATION_REJECTED';
-    const notifTitle = dto.action === VerifyAction.APPROVE ? 'Rider profile approved!' : 'Rider profile rejected';
+    const notifType =
+      dto.action === VerifyAction.APPROVE
+        ? 'VERIFICATION_APPROVED'
+        : 'VERIFICATION_REJECTED';
+    const notifTitle =
+      dto.action === VerifyAction.APPROVE
+        ? 'Rider profile approved!'
+        : 'Rider profile rejected';
     const notifBody =
       dto.action === VerifyAction.APPROVE
         ? 'Your rider profile has been approved. You can now post ride offers.'
         : `Your rider profile was rejected. ${dto.note ? `Reason: ${dto.note}` : 'Please review your documents.'}`;
 
-    await this.notificationsService.send(userId, notifType, notifTitle, notifBody);
+    await this.notificationsService.send(
+      userId,
+      notifType,
+      notifTitle,
+      notifBody,
+    );
 
     return updated;
   }
@@ -194,11 +259,18 @@ export class AdminService {
     return { reports, pagination: buildPaginationMeta(total, page, limit) };
   }
 
-  async resolveReport(adminId: string, reportId: string, dto: ResolveReportDto) {
-    const report = await this.prisma.report.findUnique({ where: { id: reportId } });
+  async resolveReport(
+    adminId: string,
+    reportId: string,
+    dto: ResolveReportDto,
+  ) {
+    const report = await this.prisma.report.findUnique({
+      where: { id: reportId },
+    });
     if (!report) throw new NotFoundException('Report not found');
 
-    const newStatus = dto.action === ResolveAction.RESOLVE ? 'RESOLVED' : 'DISMISSED';
+    const newStatus =
+      dto.action === ResolveAction.RESOLVE ? 'RESOLVED' : 'DISMISSED';
 
     const updated = await this.prisma.report.update({
       where: { id: reportId },
@@ -210,10 +282,17 @@ export class AdminService {
       },
     });
 
-    await this.logAudit(adminId, `REPORT_${newStatus}`, 'Report', reportId, null, {
-      status: newStatus,
-      note: dto.note,
-    });
+    await this.logAudit(
+      adminId,
+      `REPORT_${newStatus}`,
+      'Report',
+      reportId,
+      null,
+      {
+        status: newStatus,
+        note: dto.note,
+      },
+    );
 
     return updated;
   }

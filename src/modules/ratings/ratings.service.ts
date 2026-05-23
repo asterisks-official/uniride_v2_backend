@@ -12,7 +12,10 @@ import { RatingsRepository } from './ratings.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { RatingsQueryDto } from './dto/ratings-query.dto';
-import { getPaginationParams, buildPaginationMeta } from '../../shared/utils/pagination.util';
+import {
+  getPaginationParams,
+  buildPaginationMeta,
+} from '../../shared/utils/pagination.util';
 import { QUEUE_TRUST_SCORE } from '../../jobs/queue.constants';
 import type { TrustScoreJobData } from '../../jobs/processors/trust-score.processor';
 
@@ -26,18 +29,26 @@ export class RatingsService {
   ) {}
 
   async submitRating(raterId: string, dto: CreateRatingDto) {
-    const ride = await this.prisma.ride.findUnique({ where: { id: dto.rideId } });
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: dto.rideId },
+    });
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.status !== 'COMPLETED') throw new BadRequestException('Can only rate completed rides');
+    if (ride.status !== 'COMPLETED')
+      throw new BadRequestException('Can only rate completed rides');
 
     const isRider = ride.riderId === raterId;
     const isPassenger = ride.passengerId === raterId;
-    if (!isRider && !isPassenger) throw new ForbiddenException('You were not part of this ride');
+    if (!isRider && !isPassenger)
+      throw new ForbiddenException('You were not part of this ride');
 
     const rateeId = isRider ? (ride.passengerId as string) : ride.riderId;
 
-    const existing = await this.ratingsRepository.findByRideAndRater(dto.rideId, raterId);
-    if (existing) throw new ConflictException('You have already rated this ride');
+    const existing = await this.ratingsRepository.findByRideAndRater(
+      dto.rideId,
+      raterId,
+    );
+    if (existing)
+      throw new ConflictException('You have already rated this ride');
 
     const rating = await this.ratingsRepository.create({
       ride: { connect: { id: dto.rideId } },
@@ -50,13 +61,20 @@ export class RatingsService {
     });
 
     // Check if the other party has also rated → reveal both
-    const otherRating = await this.ratingsRepository.findByRideAndRater(dto.rideId, rateeId);
+    const otherRating = await this.ratingsRepository.findByRideAndRater(
+      dto.rideId,
+      rateeId,
+    );
     if (otherRating) {
       await this.ratingsRepository.revealRideRatings(dto.rideId);
       await this.recalculateStats(rateeId);
       await this.recalculateStats(raterId);
-      await this.trustScoreQueue.add('recalculate', { userId: rateeId } satisfies TrustScoreJobData);
-      await this.trustScoreQueue.add('recalculate', { userId: raterId } satisfies TrustScoreJobData);
+      await this.trustScoreQueue.add('recalculate', {
+        userId: rateeId,
+      } satisfies TrustScoreJobData);
+      await this.trustScoreQueue.add('recalculate', {
+        userId: raterId,
+      } satisfies TrustScoreJobData);
     }
 
     await this.notificationsService.send(
@@ -91,7 +109,8 @@ export class RatingsService {
   async getRideRatings(rideId: string, userId: string) {
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== userId && ride.passengerId !== userId) throw new ForbiddenException();
+    if (ride.riderId !== userId && ride.passengerId !== userId)
+      throw new ForbiddenException();
 
     return this.prisma.rating.findMany({
       where: { rideId, isRevealed: true },

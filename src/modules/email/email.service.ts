@@ -11,17 +11,26 @@ export class EmailService {
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('resend.apiKey');
-    this.from = this.config.get<string>('resend.fromEmail', 'onboarding@resend.dev');
+    this.from = this.config.get<string>(
+      'resend.fromEmail',
+      'onboarding@resend.dev',
+    );
     this.isDev = this.config.get<string>('nodeEnv') !== 'production';
 
     if (apiKey) {
       this.resend = new Resend(apiKey);
     } else {
-      this.logger.warn('RESEND_API_KEY not set — emails will be logged only (dev mode)');
+      this.logger.warn(
+        'RESEND_API_KEY not set — emails will be logged only (dev mode)',
+      );
     }
   }
 
-  async sendVerificationOtp(email: string, name: string, otp: string): Promise<void> {
+  async sendVerificationOtp(
+    email: string,
+    name: string,
+    otp: string,
+  ): Promise<void> {
     await this.send({
       to: email,
       subject: 'Verify your UniRide email',
@@ -29,13 +38,19 @@ export class EmailService {
         name,
         otp,
         title: 'Email Verification',
-        message: 'Use the code below to verify your email address. It expires in 10 minutes.',
-        footer: 'If you did not create a UniRide account, you can safely ignore this email.',
+        message:
+          'Use the code below to verify your email address. It expires in 10 minutes.',
+        footer:
+          'If you did not create a UniRide account, you can safely ignore this email.',
       }),
     });
   }
 
-  async sendPasswordResetOtp(email: string, name: string, otp: string): Promise<void> {
+  async sendPasswordResetOtp(
+    email: string,
+    name: string,
+    otp: string,
+  ): Promise<void> {
     await this.send({
       to: email,
       subject: 'Reset your UniRide password',
@@ -43,13 +58,19 @@ export class EmailService {
         name,
         otp,
         title: 'Password Reset',
-        message: 'Use the code below to reset your password. It expires in 10 minutes.',
-        footer: 'If you did not request a password reset, please ignore this email.',
+        message:
+          'Use the code below to reset your password. It expires in 10 minutes.',
+        footer:
+          'If you did not request a password reset, please ignore this email.',
       }),
     });
   }
 
-  private async send(msg: { to: string; subject: string; html: string }): Promise<void> {
+  private async send(msg: {
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<void> {
     if (this.isDev) {
       this.logger.log(`[DEV EMAIL] To: ${msg.to} | Subject: ${msg.subject}`);
     }

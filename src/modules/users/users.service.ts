@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { UsersRepository } from './users.repository';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -37,7 +36,18 @@ export class UsersService {
     const user = await this.usersRepository.findPublicById(userId);
     if (!user) throw new NotFoundException('User not found');
     // Strip sensitive fields from public view
-    const { passwordHash, isSuspended, suspendedReason, deletedAt, ...publicUser } = user;
+
+    const {
+      passwordHash,
+      isSuspended,
+      suspendedReason,
+      deletedAt,
+      ...publicUser
+    } = user;
+    void passwordHash;
+    void isSuspended;
+    void suspendedReason;
+    void deletedAt;
     return publicUser;
   }
 
@@ -49,7 +59,10 @@ export class UsersService {
     return profile;
   }
 
-  async createRiderProfile(userId: string, dto: CreateRiderProfileDto): Promise<RiderProfile> {
+  async createRiderProfile(
+    userId: string,
+    dto: CreateRiderProfileDto,
+  ): Promise<RiderProfile> {
     const existing = await this.usersRepository.findRiderProfile(userId);
     if (existing) throw new ConflictException('Rider profile already exists');
 
@@ -64,9 +77,13 @@ export class UsersService {
     return profile;
   }
 
-  async updateRiderProfile(userId: string, dto: UpdateRiderProfileDto): Promise<RiderProfile> {
+  async updateRiderProfile(
+    userId: string,
+    dto: UpdateRiderProfileDto,
+  ): Promise<RiderProfile> {
     const existing = await this.usersRepository.findRiderProfile(userId);
-    if (!existing) throw new NotFoundException('Rider profile not found — create one first');
+    if (!existing)
+      throw new NotFoundException('Rider profile not found — create one first');
     return this.usersRepository.updateRiderProfile(userId, dto);
   }
 }

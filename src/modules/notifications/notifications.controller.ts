@@ -26,7 +26,10 @@ export class NotificationsController {
 
   @Get()
   @ApiOperation({ summary: 'List my notifications (unread first, paginated)' })
-  getNotifications(@CurrentUser() user: JwtPayload, @Query() query: NotificationsQuery) {
+  getNotifications(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: NotificationsQuery,
+  ) {
     return this.notificationsService.getNotifications(user.sub, query);
   }
 

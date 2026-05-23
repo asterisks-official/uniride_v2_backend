@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsInt, Min, Max, MaxLength, IsOptional, IsUrl } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  MaxLength,
+  IsOptional,
+  IsUrl,
+} from 'class-validator';
 
 export class CreateRiderProfileDto {
   @ApiProperty({ example: 'motorcycle' })
@@ -33,7 +41,9 @@ export class CreateRiderProfileDto {
   @MaxLength(20)
   licensePlate: string;
 
-  @ApiProperty({ description: 'CloudFront URL of uploaded driving license doc' })
+  @ApiProperty({
+    description: 'CloudFront URL of uploaded driving license doc',
+  })
   @IsUrl()
   licenseDocUrl: string;
 
@@ -41,7 +51,9 @@ export class CreateRiderProfileDto {
   @IsUrl()
   vehiclePhotoUrl: string;
 
-  @ApiPropertyOptional({ description: 'CloudFront URL of uploaded student ID doc' })
+  @ApiPropertyOptional({
+    description: 'CloudFront URL of uploaded student ID doc',
+  })
   @IsOptional()
   @IsUrl()
   studentIdDocUrl?: string;

@@ -24,16 +24,22 @@ export class TrustScoreProcessor extends WorkerHost {
 
     const base = 50;
     const rideBonus = Math.min(stats.ridesCompleted, 20);
-    const ratingBonus = stats.totalRatings > 0 ? (stats.averageRating - 3) * 10 : 0;
+    const ratingBonus =
+      stats.totalRatings > 0 ? (stats.averageRating - 3) * 10 : 0;
     const cancellationPenalty = Math.min(stats.ridesCancelled, 10) * 2;
 
-    const trustScore = Math.min(100, Math.max(0, base + rideBonus + ratingBonus - cancellationPenalty));
+    const trustScore = Math.min(
+      100,
+      Math.max(0, base + rideBonus + ratingBonus - cancellationPenalty),
+    );
 
     await this.prisma.userStats.update({
       where: { userId },
       data: { trustScore: Math.round(trustScore) },
     });
 
-    this.logger.log(`TrustScore updated for ${userId}: ${Math.round(trustScore)}`);
+    this.logger.log(
+      `TrustScore updated for ${userId}: ${Math.round(trustScore)}`,
+    );
   }
 }

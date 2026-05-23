@@ -14,7 +14,11 @@ export class NotificationsRepository {
     return this.prisma.notification.findFirst({ where: { id, userId } });
   }
 
-  async findByUser(userId: string, skip: number, take: number): Promise<Notification[]> {
+  async findByUser(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<Notification[]> {
     return this.prisma.notification.findMany({
       where: { userId },
       orderBy: [{ isRead: 'asc' }, { createdAt: 'desc' }],

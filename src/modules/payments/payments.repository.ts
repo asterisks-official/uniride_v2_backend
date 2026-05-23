@@ -16,7 +16,11 @@ export class PaymentsRepository {
       orderBy: { createdAt: 'desc' },
       skip,
       take,
-      include: { ride: { select: { originAddress: true, destAddress: true, scheduledAt: true } } },
+      include: {
+        ride: {
+          select: { originAddress: true, destAddress: true, scheduledAt: true },
+        },
+      },
     });
   }
 
@@ -39,7 +43,11 @@ export class PaymentsRepository {
         _sum: { amount: true },
       }),
       this.prisma.payment.aggregate({
-        where: { ride: { riderId }, status: 'COMPLETED', createdAt: { gte: startOfMonth } },
+        where: {
+          ride: { riderId },
+          status: 'COMPLETED',
+          createdAt: { gte: startOfMonth },
+        },
         _sum: { amount: true },
       }),
       this.prisma.payment.aggregate({
@@ -50,7 +58,9 @@ export class PaymentsRepository {
         },
         _sum: { amount: true },
       }),
-      this.prisma.payment.count({ where: { ride: { riderId }, status: 'COMPLETED' } }),
+      this.prisma.payment.count({
+        where: { ride: { riderId }, status: 'COMPLETED' },
+      }),
     ]);
 
     return {

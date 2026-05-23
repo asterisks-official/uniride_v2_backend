@@ -14,8 +14,15 @@ export class FirebaseService implements OnModuleInit {
     const privateKey = this.config.get<string>('firebase.privateKey');
     const clientEmail = this.config.get<string>('firebase.clientEmail');
 
-    if (!projectId || !privateKey || privateKey === 'REPLACE_ME' || !clientEmail) {
-      this.logger.warn('Firebase credentials not configured — FCM push disabled');
+    if (
+      !projectId ||
+      !privateKey ||
+      privateKey === 'REPLACE_ME' ||
+      !clientEmail
+    ) {
+      this.logger.warn(
+        'Firebase credentials not configured — FCM push disabled',
+      );
       return;
     }
 
@@ -24,7 +31,11 @@ export class FirebaseService implements OnModuleInit {
       admin.apps.find((a) => a?.name === 'uniride') ??
       admin.initializeApp(
         {
-          credential: admin.credential.cert({ projectId, privateKey, clientEmail }),
+          credential: admin.credential.cert({
+            projectId,
+            privateKey,
+            clientEmail,
+          }),
         },
         'uniride',
       );
@@ -59,9 +70,13 @@ export class FirebaseService implements OnModuleInit {
       const result = await this.app.messaging().sendEachForMulticast(message);
       const failed = result.responses.filter((r) => !r.success);
       if (failed.length > 0) {
-        this.logger.warn(`FCM: ${result.successCount} sent, ${failed.length} failed`);
+        this.logger.warn(
+          `FCM: ${result.successCount} sent, ${failed.length} failed`,
+        );
       } else {
-        this.logger.debug(`FCM: ${result.successCount} notification(s) delivered`);
+        this.logger.debug(
+          `FCM: ${result.successCount} notification(s) delivered`,
+        );
       }
     } catch (err) {
       this.logger.error('FCM sendEachForMulticast error', err);

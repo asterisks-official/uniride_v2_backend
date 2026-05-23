@@ -25,14 +25,30 @@ export class UploadsService {
     const region = this.config.get<string>('aws.region');
     const accessKeyId = this.config.get<string>('aws.accessKeyId');
     const secretAccessKey = this.config.get<string>('aws.secretAccessKey');
-    this.bucket = this.config.get<string>('aws.s3Bucket', 'uniride-uploads-dev');
-    this.cdnUrl = this.config.get<string>('aws.cloudfrontUrl', 'https://cdn.uniride.app');
+    this.bucket = this.config.get<string>(
+      'aws.s3Bucket',
+      'uniride-uploads-dev',
+    );
+    this.cdnUrl = this.config.get<string>(
+      'aws.cloudfrontUrl',
+      'https://cdn.uniride.app',
+    );
     this.isDev = this.config.get<string>('nodeEnv') !== 'production';
 
-    if (region && accessKeyId && secretAccessKey && !accessKeyId.startsWith('REPLACE')) {
-      this.s3 = new S3Client({ region, credentials: { accessKeyId, secretAccessKey } });
+    if (
+      region &&
+      accessKeyId &&
+      secretAccessKey &&
+      !accessKeyId.startsWith('REPLACE')
+    ) {
+      this.s3 = new S3Client({
+        region,
+        credentials: { accessKeyId, secretAccessKey },
+      });
     } else {
-      this.logger.warn('AWS credentials not configured — presign will return mock URLs in dev');
+      this.logger.warn(
+        'AWS credentials not configured — presign will return mock URLs in dev',
+      );
     }
   }
 
@@ -58,7 +74,9 @@ export class UploadsService {
       ContentType: contentType,
     });
 
-    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: PRESIGN_TTL_SECONDS });
+    const uploadUrl = await getSignedUrl(this.s3, command, {
+      expiresIn: PRESIGN_TTL_SECONDS,
+    });
     return { uploadUrl, publicUrl, key };
   }
 }

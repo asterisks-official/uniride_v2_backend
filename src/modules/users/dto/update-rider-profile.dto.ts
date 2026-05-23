@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsUrl } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsUrl } from 'class-validator';
 
 export class UpdateRiderProfileDto {
   @ApiPropertyOptional({ example: 'Red' })

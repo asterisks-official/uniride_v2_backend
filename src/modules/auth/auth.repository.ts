@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import type { User, RefreshToken, OtpVerification, Prisma } from '@prisma/client';
+import type {
+  User,
+  RefreshToken,
+  OtpVerification,
+  Prisma,
+} from '@prisma/client';
 
 @Injectable()
 export class AuthRepository {
@@ -22,11 +27,16 @@ export class AuthRepository {
     return this.prisma.user.update({ where: { id }, data });
   }
 
-  async createOtp(data: Prisma.OtpVerificationCreateInput): Promise<OtpVerification> {
+  async createOtp(
+    data: Prisma.OtpVerificationCreateInput,
+  ): Promise<OtpVerification> {
     return this.prisma.otpVerification.create({ data });
   }
 
-  async findLatestOtp(userId: string, purpose: string): Promise<OtpVerification | null> {
+  async findLatestOtp(
+    userId: string,
+    purpose: string,
+  ): Promise<OtpVerification | null> {
     return this.prisma.otpVerification.findFirst({
       where: { userId, purpose, usedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -47,7 +57,9 @@ export class AuthRepository {
     });
   }
 
-  async createRefreshToken(data: Prisma.RefreshTokenCreateInput): Promise<RefreshToken> {
+  async createRefreshToken(
+    data: Prisma.RefreshTokenCreateInput,
+  ): Promise<RefreshToken> {
     return this.prisma.refreshToken.create({ data });
   }
 

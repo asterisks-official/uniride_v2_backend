@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,7 +20,9 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get(':rideId/messages')
-  @ApiOperation({ summary: 'Get chat messages for a ride (participants only, last 7 days)' })
+  @ApiOperation({
+    summary: 'Get chat messages for a ride (participants only, last 7 days)',
+  })
   getMessages(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,

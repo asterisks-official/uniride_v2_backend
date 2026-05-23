@@ -9,7 +9,10 @@ export enum MyRidesRole {
 }
 
 export class MyRidesDto {
-  @ApiPropertyOptional({ enum: MyRidesRole, description: 'Filter by your role in the ride' })
+  @ApiPropertyOptional({
+    enum: MyRidesRole,
+    description: 'Filter by your role in the ride',
+  })
   @IsOptional()
   @IsEnum(MyRidesRole)
   role?: MyRidesRole;

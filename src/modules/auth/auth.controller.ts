@@ -39,7 +39,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Verify email with OTP — returns tokens on success' })
+  @ApiOperation({
+    summary: 'Verify email with OTP — returns tokens on success',
+  })
   @ApiResponse({ status: 200, description: 'Email verified, tokens issued' })
   verifyEmail(@CurrentUser() user: JwtPayload, @Body() dto: VerifyOtpDto) {
     return this.authService.verifyEmail(user.sub, dto);
@@ -50,7 +52,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Login — returns access + refresh tokens' })
   @ApiResponse({ status: 200, description: 'Authenticated' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 403, description: 'Account suspended or email unverified' })
+  @ApiResponse({
+    status: 403,
+    description: 'Account suspended or email unverified',
+  })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }

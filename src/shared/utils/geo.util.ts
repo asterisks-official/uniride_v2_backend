@@ -17,6 +17,8 @@ export function haversineDistanceKm(
 
 export function gridCell(lat: number, lng: number, cellSizeKm = 2): string {
   const latCell = Math.floor(lat / (cellSizeKm / 111));
-  const lngCell = Math.floor(lng / (cellSizeKm / (111 * Math.cos((lat * Math.PI) / 180))));
+  const lngCell = Math.floor(
+    lng / (cellSizeKm / (111 * Math.cos((lat * Math.PI) / 180))),
+  );
   return `${latCell}:${lngCell}`;
 }

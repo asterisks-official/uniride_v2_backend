@@ -1,4 +1,11 @@
-import { IsOptional, IsNumber, IsString, IsEnum, IsInt, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsEnum,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { GenderPreference } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -28,7 +35,10 @@ export class SearchRidesDto {
   @Type(() => Number)
   destLng?: number;
 
-  @ApiPropertyOptional({ example: '2026-05-24', description: 'Filter by date (YYYY-MM-DD)' })
+  @ApiPropertyOptional({
+    example: '2026-05-24',
+    description: 'Filter by date (YYYY-MM-DD)',
+  })
   @IsOptional()
   @IsString()
   date?: string;

@@ -11,7 +11,12 @@ export interface MatchScore {
 export class MatchingService {
   score(
     ride: Ride,
-    requester: { originLat: number; originLng: number; destLat: number; destLng: number },
+    requester: {
+      originLat: number;
+      originLng: number;
+      destLat: number;
+      destLng: number;
+    },
     riderStats: UserStats | null,
   ): number {
     const originDist = haversineDistanceKm(

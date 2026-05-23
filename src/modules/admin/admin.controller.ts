@@ -67,7 +67,10 @@ export class AdminController {
 
   @Get('riders/pending')
   @ApiOperation({ summary: 'List pending rider verification requests' })
-  getPendingRiders(@Query('page') page?: number, @Query('limit') limit?: number) {
+  getPendingRiders(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     return this.adminService.getPendingRiders({ page, limit });
   }
 

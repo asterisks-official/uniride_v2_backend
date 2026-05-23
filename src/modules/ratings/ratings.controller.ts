@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { RatingsService } from './ratings.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
@@ -22,7 +31,10 @@ export class RatingsController {
 
   @Get('received')
   @ApiOperation({ summary: 'Get ratings you have received' })
-  getReceivedRatings(@CurrentUser() user: JwtPayload, @Query() query: RatingsQueryDto) {
+  getReceivedRatings(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: RatingsQueryDto,
+  ) {
     return this.ratingsService.getReceivedRatings(user.sub, query);
   }
 
@@ -36,7 +48,10 @@ export class RatingsController {
   }
 
   @Get('ride/:rideId')
-  @ApiOperation({ summary: 'Get ratings for a specific ride (visible to ride participants only)' })
+  @ApiOperation({
+    summary:
+      'Get ratings for a specific ride (visible to ride participants only)',
+  })
   getRideRatings(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,

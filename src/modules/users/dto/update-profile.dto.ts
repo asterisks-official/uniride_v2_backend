@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, IsMobilePhone, IsUrl } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsMobilePhone,
+  IsUrl,
+} from 'class-validator';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({ example: 'Shakib Ahmed' })
@@ -25,7 +31,9 @@ export class UpdateProfileDto {
   @IsMobilePhone()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'https://cdn.uniride.app/avatars/user-id.jpg' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.uniride.app/avatars/user-id.jpg',
+  })
   @IsOptional()
   @IsUrl()
   profilePictureUrl?: string;

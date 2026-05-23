@@ -10,13 +10,20 @@ export class RatingsRepository {
     return this.prisma.rating.create({ data });
   }
 
-  async findByRideAndRater(rideId: string, raterId: string): Promise<Rating | null> {
+  async findByRideAndRater(
+    rideId: string,
+    raterId: string,
+  ): Promise<Rating | null> {
     return this.prisma.rating.findUnique({
       where: { rideId_raterId: { rideId, raterId } },
     });
   }
 
-  async findByRatee(rateeId: string, skip: number, take: number): Promise<Rating[]> {
+  async findByRatee(
+    rateeId: string,
+    skip: number,
+    take: number,
+  ): Promise<Rating[]> {
     return this.prisma.rating.findMany({
       where: { rateeId, isRevealed: true },
       orderBy: { createdAt: 'desc' },
@@ -36,7 +43,10 @@ export class RatingsRepository {
     });
   }
 
-  async updateUserStats(userId: string, data: Prisma.UserStatsUpdateInput): Promise<UserStats> {
+  async updateUserStats(
+    userId: string,
+    data: Prisma.UserStatsUpdateInput,
+  ): Promise<UserStats> {
     return this.prisma.userStats.update({ where: { userId }, data });
   }
 
