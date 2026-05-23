@@ -1,5 +1,5 @@
 [build]
-builder = "NIXPACKS"
+builder = "RAILPACK"
 buildCommand = "DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy npx prisma generate && npm run build"
 
 [deploy]
