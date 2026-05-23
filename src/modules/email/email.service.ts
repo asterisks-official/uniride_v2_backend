@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
+export interface EmailSendResult {
+  ok: boolean;
+  skipped: boolean; // true when Resend isn't configured (no API key)
+  id?: string;
+  error?: string;
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -66,22 +73,41 @@ export class EmailService {
     });
   }
 
+  /// Sends a test email through the exact same path as real emails and returns
+  /// the raw outcome (Resend id on success, or the error message). Used by the
+  /// temporary diagnostic endpoint.
+  async diagnose(to: string): Promise<
+    EmailSendResult & { from: string; configured: boolean; isDev: boolean }
+  > {
+    const result = await this.send({
+      to,
+      subject: 'UniRide email diagnostic',
+      html: '<p>This is a UniRide email delivery test.</p>',
+    });
+    return {
+      from: this.from,
+      configured: this.resend !== null,
+      isDev: this.isDev,
+      ...result,
+    };
+  }
+
   private async send(msg: {
     to: string;
     subject: string;
     html: string;
-  }): Promise<void> {
+  }): Promise<EmailSendResult> {
     if (this.isDev) {
       this.logger.log(`[DEV EMAIL] To: ${msg.to} | Subject: ${msg.subject}`);
     }
 
-    if (!this.resend) return;
+    if (!this.resend) return { ok: false, skipped: true };
 
     // Email delivery must never break the calling flow (e.g. registration):
     // the Resend SDK can both return an `error` object and throw on network
     // failures, so swallow both and only log.
     try {
-      const { error } = await this.resend.emails.send({
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
         to: msg.to,
         subject: msg.subject,
@@ -92,12 +118,16 @@ export class EmailService {
         this.logger.error(
           `Failed to send email to ${msg.to}: ${error.message}`,
         );
+        return { ok: false, skipped: false, error: error.message };
       }
+      return { ok: true, skipped: false, id: data?.id };
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
         `Email send threw for ${msg.to}`,
         err instanceof Error ? err.stack : String(err),
       );
+      return { ok: false, skipped: false, error: message };
     }
   }
 
