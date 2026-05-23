@@ -1,7 +1,6 @@
 .git
 .gitignore
 node_modules
-dist
 coverage
 generated
 .env

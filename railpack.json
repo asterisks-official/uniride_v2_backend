@@ -1,0 +1,7 @@
+{
+  "providers": {
+    "node": {
+      "buildOutputDirectories": ["dist"]
+    }
+  }
+}
