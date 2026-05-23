@@ -1,3 +1,17 @@
+const normalizePrivateKey = (key?: string): string | undefined => {
+  if (!key) return undefined;
+  let k = key.trim();
+  // Render/CI dashboards often wrap pasted values in quotes — strip them.
+  if (
+    (k.startsWith('"') && k.endsWith('"')) ||
+    (k.startsWith("'") && k.endsWith("'"))
+  ) {
+    k = k.slice(1, -1);
+  }
+  // Convert escaped newlines into real ones so OpenSSL can decode the PEM.
+  return k.replace(/\\n/g, '\n');
+};
+
 export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
@@ -14,8 +28,8 @@ export default () => ({
   },
 
   jwt: {
-    privateKey: process.env.JWT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    publicKey: process.env.JWT_PUBLIC_KEY?.replace(/\\n/g, '\n'),
+    privateKey: normalizePrivateKey(process.env.JWT_PRIVATE_KEY),
+    publicKey: normalizePrivateKey(process.env.JWT_PUBLIC_KEY),
     accessTokenTtl: parseInt(process.env.JWT_ACCESS_TOKEN_TTL ?? '900', 10),
     refreshTokenTtl: parseInt(
       process.env.JWT_REFRESH_TOKEN_TTL ?? '2592000',
@@ -33,7 +47,7 @@ export default () => ({
 
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   },
 

@@ -26,21 +26,31 @@ export class FirebaseService implements OnModuleInit {
       return;
     }
 
-    // Avoid re-initialising if app already exists (hot-reload)
-    this.app =
-      admin.apps.find((a) => a?.name === 'uniride') ??
-      admin.initializeApp(
-        {
-          credential: admin.credential.cert({
-            projectId,
-            privateKey,
-            clientEmail,
-          }),
-        },
-        'uniride',
-      );
+    try {
+      // Avoid re-initialising if app already exists (hot-reload)
+      this.app =
+        admin.apps.find((a) => a?.name === 'uniride') ??
+        admin.initializeApp(
+          {
+            credential: admin.credential.cert({
+              projectId,
+              privateKey,
+              clientEmail,
+            }),
+          },
+          'uniride',
+        );
 
-    this.logger.log(`Firebase Admin initialised (project: ${projectId})`);
+      this.logger.log(`Firebase Admin initialised (project: ${projectId})`);
+    } catch (err) {
+      this.app = null;
+      this.logger.error(
+        'Firebase Admin failed to initialise — FCM push disabled. ' +
+          'Check FIREBASE_PRIVATE_KEY formatting (no surrounding quotes; ' +
+          'newlines as \\n).',
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   get isReady(): boolean {
