@@ -66,8 +66,13 @@ import {
             connection: {
               host: url.hostname,
               port: parseInt(url.port || '6379', 10),
-              ...(url.password && { password: decodeURIComponent(url.password) }),
-              ...(url.username && url.username !== 'default' && { username: decodeURIComponent(url.username) }),
+              ...(url.password && {
+                password: decodeURIComponent(url.password),
+              }),
+              ...(url.username &&
+                url.username !== 'default' && {
+                  username: decodeURIComponent(url.username),
+                }),
             },
           };
         }
