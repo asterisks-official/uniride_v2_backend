@@ -189,15 +189,25 @@ export class AdminService {
     const newStatus =
       dto.action === VerifyAction.APPROVE ? 'APPROVED' : 'REJECTED';
 
-    const updated = await this.prisma.riderProfile.update({
-      where: { userId },
-      data: {
-        verificationStatus: newStatus,
-        adminNote: dto.note ?? null,
-        reviewedAt: new Date(),
-        reviewedBy: adminId,
-      },
-    });
+    // Approval is what actually grants the RIDER role; rejection (or revocation
+    // of a previously approved rider) drops the user back to PASSENGER.
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.riderProfile.update({
+        where: { userId },
+        data: {
+          verificationStatus: newStatus,
+          adminNote: dto.note ?? null,
+          reviewedAt: new Date(),
+          reviewedBy: adminId,
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          role: dto.action === VerifyAction.APPROVE ? 'RIDER' : 'PASSENGER',
+        },
+      }),
+    ]);
 
     await this.logAudit(
       adminId,

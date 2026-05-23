@@ -71,9 +71,9 @@ export class UsersService {
       ...dto,
     });
 
-    // Promote role to RIDER
-    await this.usersRepository.update(userId, { role: 'RIDER' });
-
+    // Role stays PASSENGER until an admin approves the profile (verificationStatus
+    // starts PENDING). Promotion to RIDER happens in admin.verifyRider on APPROVE,
+    // so unverified users cannot post rides.
     return profile;
   }
 
