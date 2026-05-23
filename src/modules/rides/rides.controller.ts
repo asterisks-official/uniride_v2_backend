@@ -18,7 +18,6 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import { RidesService } from './rides.service';
 import { CreateRideDto } from './dto/create-ride.dto';
 import { SearchRidesDto } from './dto/search-rides.dto';
@@ -28,8 +27,6 @@ import { RequestRideDto } from './dto/request-ride.dto';
 import { RespondRequestDto } from './dto/respond-request.dto';
 import { MyRidesDto } from './dto/my-rides.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../shared/guards/roles.guard';
-import { Roles } from '../../shared/decorators/roles.decorator';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
@@ -56,13 +53,10 @@ export class RidesController {
     return this.ridesService.searchRides(dto);
   }
 
-  // ── Create (RIDER only) ────────────────────────────────────────────────────
+  // ── Create ─────────────────────────────────────────────────────────────────
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Create a ride offer (RIDER only)' })
-  @ApiResponse({ status: 403, description: 'RIDER role required' })
+  @ApiOperation({ summary: 'Create a ride offer or request' })
   createRide(@CurrentUser() user: JwtPayload, @Body() dto: CreateRideDto) {
     return this.ridesService.createRide(user.sub, dto);
   }
@@ -76,12 +70,10 @@ export class RidesController {
     return this.ridesService.getRide(rideId);
   }
 
-  // ── Update (RIDER only) ────────────────────────────────────────────────────
+  // ── Update (creator only, enforced in service) ────────────────────────────
 
   @Patch(':rideId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Update ride (RIDER, SEARCHING status only)' })
+  @ApiOperation({ summary: 'Update ride (creator only, SEARCHING status)' })
   updateRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
@@ -90,13 +82,11 @@ export class RidesController {
     return this.ridesService.updateRide(user.sub, rideId, dto);
   }
 
-  // ── Cancel (RIDER only) ────────────────────────────────────────────────────
+  // ── Cancel (creator only, enforced in service) ────────────────────────────
 
   @Delete(':rideId')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Cancel a ride (RIDER only)' })
+  @ApiOperation({ summary: 'Cancel a ride (creator only)' })
   cancelRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
@@ -117,12 +107,10 @@ export class RidesController {
     return this.ridesService.requestRide(user.sub, rideId, dto);
   }
 
-  // ── View requests (RIDER only) ─────────────────────────────────────────────
+  // ── View requests (creator only, enforced in service) ────────────────────
 
   @Get(':rideId/requests')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Get pending requests for a ride (RIDER only)' })
+  @ApiOperation({ summary: 'Get pending requests for a ride (creator only)' })
   getRideRequests(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
@@ -130,12 +118,10 @@ export class RidesController {
     return this.ridesService.getRideRequests(user.sub, rideId);
   }
 
-  // ── Accept / Decline request (RIDER only) ──────────────────────────────────
+  // ── Accept / Decline request (creator only, enforced in service) ────────────
 
   @Patch(':rideId/requests/:requestId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Accept or decline a join request (RIDER only)' })
+  @ApiOperation({ summary: 'Accept or decline a join request (creator only)' })
   respondToRequest(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
@@ -145,12 +131,10 @@ export class RidesController {
     return this.ridesService.respondToRequest(user.sub, rideId, requestId, dto);
   }
 
-  // ── Start ride (RIDER only) ────────────────────────────────────────────────
+  // ── Start ride (creator only, enforced in service) ────────────────────────
 
   @Patch(':rideId/start')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.RIDER)
-  @ApiOperation({ summary: 'Start a matched ride (RIDER only)' })
+  @ApiOperation({ summary: 'Start a matched ride (creator only)' })
   startRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
