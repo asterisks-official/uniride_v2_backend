@@ -45,8 +45,29 @@ export class AuthService {
   async register(
     dto: RegisterDto,
   ): Promise<{ message: string; accessToken: string; devOtp?: string }> {
+    const isDev = this.config.get<string>('nodeEnv') !== 'production';
     const existing = await this.authRepository.findUserByEmail(dto.email);
+
     if (existing) {
+      // Re-registering an account that was never verified resends the code and
+      // re-issues a verification token, so a user who hit an error mid-signup
+      // (user row created, but flow interrupted) can still complete it instead
+      // of being permanently blocked by "email already registered".
+      if (!existing.isEmailVerified && !existing.deletedAt) {
+        const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+        const refreshed = await this.authRepository.updateUser(existing.id, {
+          passwordHash,
+          name: dto.name,
+          university: dto.university,
+          phone: dto.phone,
+        });
+        const otp = await this.sendEmailOtp(refreshed, 'email_verification');
+        return {
+          message: 'Verification OTP re-sent to your email',
+          accessToken: this.signEmailVerificationToken(refreshed),
+          ...(isDev && { devOtp: otp }),
+        };
+      }
       throw new ConflictException('Email already registered');
     }
 
@@ -61,20 +82,21 @@ export class AuthService {
 
     const otp = await this.sendEmailOtp(user, 'email_verification');
 
-    // Short-lived token so client can immediately call POST /auth/verify-email
+    return {
+      message: 'Verification OTP sent to your email',
+      accessToken: this.signEmailVerificationToken(user),
+      ...(isDev && { devOtp: otp }),
+    };
+  }
+
+  // Short-lived token so the client can immediately call POST /auth/verify-email.
+  private signEmailVerificationToken(user: User): string {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-
-    const isDev = this.config.get<string>('nodeEnv') !== 'production';
-    return {
-      message: 'Verification OTP sent to your email',
-      accessToken,
-      ...(isDev && { devOtp: otp }),
-    };
+    return this.jwtService.sign(payload, { expiresIn: '15m' });
   }
 
   async verifyEmail(

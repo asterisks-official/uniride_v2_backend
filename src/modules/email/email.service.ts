@@ -77,15 +77,27 @@ export class EmailService {
 
     if (!this.resend) return;
 
-    const { error } = await this.resend.emails.send({
-      from: this.from,
-      to: msg.to,
-      subject: msg.subject,
-      html: msg.html,
-    });
+    // Email delivery must never break the calling flow (e.g. registration):
+    // the Resend SDK can both return an `error` object and throw on network
+    // failures, so swallow both and only log.
+    try {
+      const { error } = await this.resend.emails.send({
+        from: this.from,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+      });
 
-    if (error) {
-      this.logger.error(`Failed to send email to ${msg.to}: ${error.message}`);
+      if (error) {
+        this.logger.error(
+          `Failed to send email to ${msg.to}: ${error.message}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Email send threw for ${msg.to}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
