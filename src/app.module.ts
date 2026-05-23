@@ -58,13 +58,27 @@ import {
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('redis.host'),
-          port: config.get<number>('redis.port'),
-          password: config.get<string>('redis.password'),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('redis.url');
+        if (redisUrl) {
+          const url = new URL(redisUrl);
+          return {
+            connection: {
+              host: url.hostname,
+              port: parseInt(url.port || '6379', 10),
+              ...(url.password && { password: decodeURIComponent(url.password) }),
+              ...(url.username && url.username !== 'default' && { username: decodeURIComponent(url.username) }),
+            },
+          };
+        }
+        return {
+          connection: {
+            host: config.get<string>('redis.host', 'localhost'),
+            port: config.get<number>('redis.port', 6379),
+            password: config.get<string>('redis.password'),
+          },
+        };
+      },
     }),
     BullModule.registerQueue(
       { name: QUEUE_NOTIFICATIONS },
