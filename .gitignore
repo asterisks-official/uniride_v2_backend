@@ -24,3 +24,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Dockerfile is kept locally for docker-compose only — Railway uses Nixpacks via railway.toml
+Dockerfile
