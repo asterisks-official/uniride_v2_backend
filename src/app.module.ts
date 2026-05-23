@@ -62,6 +62,7 @@ import {
         const redisUrl = config.get<string>('redis.url');
         if (redisUrl) {
           const url = new URL(redisUrl);
+          const tls = url.protocol === 'rediss:';
           return {
             connection: {
               host: url.hostname,
@@ -73,6 +74,7 @@ import {
                 url.username !== 'default' && {
                   username: decodeURIComponent(url.username),
                 }),
+              ...(tls && { tls: {} }),
             },
           };
         }
