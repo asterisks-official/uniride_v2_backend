@@ -73,27 +73,6 @@ export class EmailService {
     });
   }
 
-  /// Sends a test email through the exact same path as real emails and returns
-  /// the raw outcome (Resend id on success, or the error message). Used by the
-  /// temporary diagnostic endpoint.
-  async diagnose(
-    to: string,
-  ): Promise<
-    EmailSendResult & { from: string; configured: boolean; isDev: boolean }
-  > {
-    const result = await this.send({
-      to,
-      subject: 'UniRide email diagnostic',
-      html: '<p>This is a UniRide email delivery test.</p>',
-    });
-    return {
-      from: this.from,
-      configured: this.resend !== null,
-      isDev: this.isDev,
-      ...result,
-    };
-  }
-
   private async send(msg: {
     to: string;
     subject: string;

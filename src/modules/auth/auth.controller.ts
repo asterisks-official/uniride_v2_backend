@@ -79,14 +79,6 @@ export class AuthController {
     return this.authService.logout(dto.refreshToken);
   }
 
-  // TEMPORARY diagnostic endpoint — remove after debugging email delivery.
-  @Post('debug-email')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'TEMP: test email delivery via Resend' })
-  debugEmail(@Body() dto: ForgotPasswordDto) {
-    return this.authService.debugEmail(dto.email);
-  }
-
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset OTP' })

@@ -89,11 +89,6 @@ export class AuthService {
     };
   }
 
-  // TEMPORARY diagnostic — returns Resend's raw response for a test send.
-  async debugEmail(email: string) {
-    return this.emailService.diagnose(email);
-  }
-
   // Short-lived token so the client can immediately call POST /auth/verify-email.
   private signEmailVerificationToken(user: User): string {
     const payload: JwtPayload = {
