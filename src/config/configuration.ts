@@ -1,15 +1,42 @@
 const normalizePrivateKey = (key?: string): string | undefined => {
   if (!key) return undefined;
   let k = key.trim();
+
   // Render/CI dashboards often wrap pasted values in quotes — strip them.
   if (
     (k.startsWith('"') && k.endsWith('"')) ||
     (k.startsWith("'") && k.endsWith("'"))
   ) {
-    k = k.slice(1, -1);
+    k = k.slice(1, -1).trim();
   }
-  // Convert escaped newlines into real ones so OpenSSL can decode the PEM.
-  return k.replace(/\\n/g, '\n');
+
+  // A full service-account JSON may have been pasted — pull out private_key.
+  if (k.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(k) as { private_key?: unknown };
+      if (typeof parsed.private_key === 'string') k = parsed.private_key;
+    } catch {
+      // not JSON — fall through
+    }
+  }
+
+  // Convert escaped newlines into real ones (and drop stray carriage returns)
+  // so OpenSSL can decode the PEM.
+  k = k.replace(/\\r/g, '').replace(/\\n/g, '\n').replace(/\r/g, '');
+
+  // Still not a PEM? It may be base64-encoded — decode once and retry.
+  if (!k.includes('BEGIN')) {
+    try {
+      const decoded = Buffer.from(k, 'base64').toString('utf8');
+      if (decoded.includes('BEGIN')) {
+        k = decoded.replace(/\\n/g, '\n').replace(/\r/g, '');
+      }
+    } catch {
+      // not base64 — leave as-is
+    }
+  }
+
+  return k;
 };
 
 export default () => ({
