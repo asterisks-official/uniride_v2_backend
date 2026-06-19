@@ -1,11 +1,23 @@
-FROM node:22-slim AS builder
+# ──────────────────────────────────────────────
+# Stage: dev  (hot-reload, used by docker-compose)
+# ──────────────────────────────────────────────
+FROM node:22-slim AS dev
 WORKDIR /app
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci
-COPY . .
+COPY prisma ./prisma/
+COPY prisma.config.ts ./
 ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
-RUN npx prisma generate && npm run build
+RUN npx prisma generate
+# Source is volume-mounted at runtime; node_modules stays from this image layer.
+
+# ──────────────────────────────────────────────
+# Stage: builder  (compiles TypeScript for prod)
+# ──────────────────────────────────────────────
+FROM dev AS builder
+COPY . .
+RUN npm run build
 
 FROM node:22-slim AS production
 WORKDIR /app
