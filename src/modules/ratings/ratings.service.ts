@@ -35,13 +35,15 @@ export class RatingsService {
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.status !== 'COMPLETED')
       throw new BadRequestException('Can only rate completed rides');
+    if (!ride.riderId || !ride.passengerId)
+      throw new BadRequestException('Ride has no matched counterpart');
 
     const isRider = ride.riderId === raterId;
     const isPassenger = ride.passengerId === raterId;
     if (!isRider && !isPassenger)
       throw new ForbiddenException('You were not part of this ride');
 
-    const rateeId = isRider ? (ride.passengerId as string) : ride.riderId;
+    const rateeId = isRider ? ride.passengerId : ride.riderId;
 
     const existing = await this.ratingsRepository.findByRideAndRater(
       dto.rideId,

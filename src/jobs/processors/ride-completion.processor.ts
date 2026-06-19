@@ -24,7 +24,12 @@ export class RideCompletionProcessor extends WorkerHost {
     const { rideId } = job.data;
 
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
-    if (!ride || ride.status !== 'COMPLETED' || !ride.passengerId) {
+    if (
+      !ride ||
+      ride.status !== 'COMPLETED' ||
+      !ride.riderId ||
+      !ride.passengerId
+    ) {
       this.logger.warn(
         `Skipping ride-completion job for ride ${rideId}: invalid state`,
       );

@@ -38,6 +38,7 @@ export class RidesRepository {
     return this.prisma.ride.findUnique({
       where: { id },
       include: {
+        creator: { select: riderSelect },
         rider: { select: riderSelect },
         passenger: { select: passengerSelect },
         _count: { select: { requests: { where: { status: 'PENDING' } } } },
@@ -81,6 +82,7 @@ export class RidesRepository {
         take,
         orderBy: { scheduledAt: 'desc' },
         include: {
+          creator: { select: riderSelect },
           rider: { select: riderSelect },
           passenger: { select: passengerSelect },
         },
@@ -130,8 +132,14 @@ export class RidesRepository {
   async acceptRequestTx(
     rideId: string,
     requestId: string,
-    passengerId: string,
+    requesterId: string,
+    fillSide: 'rider' | 'passenger',
   ) {
+    const fill =
+      fillSide === 'rider'
+        ? { riderId: requesterId }
+        : { passengerId: requesterId };
+
     return this.prisma.$transaction([
       this.prisma.rideRequest.update({
         where: { id: requestId },
@@ -139,7 +147,7 @@ export class RidesRepository {
       }),
       this.prisma.ride.update({
         where: { id: rideId },
-        data: { status: 'MATCHED', passengerId },
+        data: { status: 'MATCHED', ...fill },
       }),
       this.prisma.rideRequest.updateMany({
         where: { rideId, status: 'PENDING', id: { not: requestId } },

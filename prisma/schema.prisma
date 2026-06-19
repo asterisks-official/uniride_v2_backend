@@ -122,6 +122,7 @@ model User {
   devices           UserDevice[]
   refreshTokens     RefreshToken[]
   otpVerifications  OtpVerification[]
+  ridesCreated      Ride[]            @relation("CreatedRides")
   ridesAsRider      Ride[]            @relation("RiderRides")
   ridesAsPassenger  Ride[]            @relation("PassengerRides")
   rideRequests      RideRequest[]
@@ -224,7 +225,8 @@ model OtpVerification {
 
 model Ride {
   id               String           @id @default(uuid())
-  riderId          String           @map("rider_id")
+  creatorId        String           @map("creator_id")
+  riderId          String?          @map("rider_id")
   passengerId      String?          @map("passenger_id")
   type             RideType
   status           RideStatus       @default(SEARCHING)
@@ -248,7 +250,8 @@ model Ride {
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
 
-  rider      User          @relation("RiderRides", fields: [riderId], references: [id])
+  creator    User          @relation("CreatedRides", fields: [creatorId], references: [id])
+  rider      User?         @relation("RiderRides", fields: [riderId], references: [id])
   passenger  User?         @relation("PassengerRides", fields: [passengerId], references: [id])
   requests   RideRequest[]
   messages   RideMessage[]
@@ -257,6 +260,7 @@ model Ride {
 
   @@index([status, scheduledAt])
   @@index([originLat, originLng])
+  @@index([creatorId])
   @@index([riderId])
   @@map("rides")
 }

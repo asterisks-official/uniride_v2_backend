@@ -48,9 +48,12 @@ export class RidesController {
   // ── Search ─────────────────────────────────────────────────────────────────
 
   @Get()
-  @ApiOperation({ summary: 'Search available rides' })
-  searchRides(@Query() dto: SearchRidesDto) {
-    return this.ridesService.searchRides(dto);
+  @ApiOperation({ summary: 'Search available rides (complement of your role)' })
+  searchRides(@CurrentUser() user: JwtPayload, @Query() dto: SearchRidesDto) {
+    return this.ridesService.searchRides(
+      { id: user.sub, role: user.role },
+      dto,
+    );
   }
 
   // ── Create ─────────────────────────────────────────────────────────────────
@@ -58,7 +61,7 @@ export class RidesController {
   @Post()
   @ApiOperation({ summary: 'Create a ride offer or request' })
   createRide(@CurrentUser() user: JwtPayload, @Body() dto: CreateRideDto) {
-    return this.ridesService.createRide(user.sub, dto);
+    return this.ridesService.createRide(user.sub, user.role, dto);
   }
 
   // ── Get by id ──────────────────────────────────────────────────────────────
@@ -104,7 +107,7 @@ export class RidesController {
     @Param('rideId', ParseUUIDPipe) rideId: string,
     @Body() dto: RequestRideDto,
   ) {
-    return this.ridesService.requestRide(user.sub, rideId, dto);
+    return this.ridesService.requestRide(user.sub, user.role, rideId, dto);
   }
 
   // ── View requests (creator only, enforced in service) ────────────────────

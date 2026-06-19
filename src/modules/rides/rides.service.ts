@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import type { UserRole } from '@prisma/client';
 import { RidesRepository } from './rides.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRideDto } from './dto/create-ride.dto';
@@ -40,11 +41,29 @@ export class RidesService {
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
-  async createRide(riderId: string, dto: CreateRideDto) {
+  async createRide(riderId: string, role: UserRole, dto: CreateRideDto) {
+    // Role ↔ post-type integrity: drivers offer rides, passengers request them.
+    if (dto.type === 'OFFER' && role !== 'RIDER') {
+      throw new ForbiddenException(
+        'Only verified riders can offer a ride. Complete rider verification first.',
+      );
+    }
+    if (dto.type === 'REQUEST' && role !== 'PASSENGER') {
+      throw new ForbiddenException('Only passengers can request a ride.');
+    }
+
     const scheduledAt = new Date(dto.scheduledAt);
     if (scheduledAt <= new Date()) {
       throw new BadRequestException('scheduledAt must be a future date');
     }
+
+    // The creator occupies the side matching their role; the other side is
+    // filled when a counterpart is matched. OFFER → creator is the driver,
+    // REQUEST → creator is the passenger.
+    const counterpartSide =
+      dto.type === 'OFFER'
+        ? { rider: { connect: { id: riderId } } }
+        : { passenger: { connect: { id: riderId } } };
 
     const ride = await this.ridesRepository.create({
       type: dto.type,
@@ -58,7 +77,8 @@ export class RidesService {
       seatsAvailable: dto.seatsAvailable ?? 1,
       genderPref: dto.genderPref ?? 'ANY',
       scheduledAt,
-      rider: { connect: { id: riderId } },
+      creator: { connect: { id: riderId } },
+      ...counterpartSide,
     });
 
     const delay = Math.max(0, scheduledAt.getTime() - Date.now());
@@ -76,10 +96,19 @@ export class RidesService {
 
   // ── Search ─────────────────────────────────────────────────────────────────
 
-  async searchRides(dto: SearchRidesDto) {
+  async searchRides(
+    viewer: { id: string; role: UserRole },
+    dto: SearchRidesDto,
+  ) {
     const { skip, take, page, limit } = getPaginationParams(dto);
 
-    const where: Record<string, unknown> = { status: 'SEARCHING' };
+    // Show the complementary side only: riders see passenger REQUESTs, everyone
+    // else sees driver OFFERs. Never show the viewer their own posts.
+    const where: Record<string, unknown> = {
+      status: 'SEARCHING',
+      type: viewer.role === 'RIDER' ? 'REQUEST' : 'OFFER',
+      NOT: { creatorId: viewer.id },
+    };
 
     if (dto.date) {
       const dayStart = new Date(`${dto.date}T00:00:00.000Z`);
@@ -124,6 +153,14 @@ export class RidesService {
         take,
         orderBy: { scheduledAt: 'asc' },
         include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              profilePictureUrl: true,
+              stats: { select: { averageRating: true, ridesCompleted: true } },
+            },
+          },
           rider: {
             select: {
               id: true,
@@ -165,10 +202,10 @@ export class RidesService {
 
   // ── Update ─────────────────────────────────────────────────────────────────
 
-  async updateRide(riderId: string, rideId: string, dto: UpdateRideDto) {
+  async updateRide(userId: string, rideId: string, dto: UpdateRideDto) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== riderId) throw new ForbiddenException();
+    if (ride.creatorId !== userId) throw new ForbiddenException();
     if (ride.status !== 'SEARCHING') {
       throw new ConflictException('Cannot edit a matched or active ride');
     }
@@ -191,10 +228,10 @@ export class RidesService {
 
   // ── Cancel ─────────────────────────────────────────────────────────────────
 
-  async cancelRide(riderId: string, rideId: string, dto: CancelRideDto) {
+  async cancelRide(userId: string, rideId: string, dto: CancelRideDto) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== riderId) throw new ForbiddenException();
+    if (ride.creatorId !== userId) throw new ForbiddenException();
     if (
       ride.status === 'IN_PROGRESS' ||
       ride.status === 'COMPLETED' ||
@@ -216,18 +253,34 @@ export class RidesService {
 
   // ── Request to join ────────────────────────────────────────────────────────
 
-  async requestRide(passengerId: string, rideId: string, dto: RequestRideDto) {
+  async requestRide(
+    requesterId: string,
+    requesterRole: UserRole,
+    rideId: string,
+    dto: RequestRideDto,
+  ) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId === passengerId)
+    if (ride.creatorId === requesterId)
       throw new ForbiddenException('Cannot request your own ride');
     if (ride.status !== 'SEARCHING') {
       throw new ConflictException('Ride is not accepting requests');
     }
 
+    // The requester must be the complement of the post: passengers join ride
+    // offers, verified riders fulfil ride requests.
+    if (ride.type === 'OFFER' && requesterRole !== 'PASSENGER') {
+      throw new ForbiddenException('Only passengers can join a ride offer');
+    }
+    if (ride.type === 'REQUEST' && requesterRole !== 'RIDER') {
+      throw new ForbiddenException(
+        'Only verified riders can fulfil a ride request',
+      );
+    }
+
     const existing = await this.ridesRepository.findRequest(
       rideId,
-      passengerId,
+      requesterId,
     );
     if (existing) throw new ConflictException('Already requested this ride');
 
@@ -235,16 +288,17 @@ export class RidesService {
 
     const rideRequest = await this.ridesRepository.createRequest({
       ride: { connect: { id: rideId } },
-      passenger: { connect: { id: passengerId } },
+      passenger: { connect: { id: requesterId } },
       message: dto.message,
       expiresAt,
     });
 
+    const verb = ride.type === 'OFFER' ? 'join' : 'drive';
     await this.notificationsService.send(
-      ride.riderId,
+      ride.creatorId,
       'RIDE_REQUEST',
       'New ride request',
-      `Someone wants to join your ride to ${ride.destAddress}`,
+      `Someone wants to ${verb} your ride to ${ride.destAddress}`,
       { rideId, requestId: rideRequest.id },
     );
 
@@ -253,24 +307,24 @@ export class RidesService {
 
   // ── Get requests ───────────────────────────────────────────────────────────
 
-  async getRideRequests(riderId: string, rideId: string) {
+  async getRideRequests(userId: string, rideId: string) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== riderId) throw new ForbiddenException();
+    if (ride.creatorId !== userId) throw new ForbiddenException();
     return this.ridesRepository.findRequests(rideId, 'PENDING');
   }
 
   // ── Respond to request ─────────────────────────────────────────────────────
 
   async respondToRequest(
-    riderId: string,
+    userId: string,
     rideId: string,
     requestId: string,
     dto: RespondRequestDto,
   ) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
-    if (ride.riderId !== riderId) throw new ForbiddenException();
+    if (ride.creatorId !== userId) throw new ForbiddenException();
     if (ride.status !== 'SEARCHING') {
       throw new ConflictException('Ride is no longer accepting responses');
     }
@@ -282,10 +336,14 @@ export class RidesService {
       throw new ConflictException('Request is no longer pending');
 
     if (dto.action === RequestAction.ACCEPT) {
+      // The requester fills the empty side: passengers join OFFERs, drivers
+      // fulfil REQUESTs.
+      const fillSide = ride.type === 'OFFER' ? 'passenger' : 'rider';
       await this.ridesRepository.acceptRequestTx(
         rideId,
         requestId,
         req.passengerId,
+        fillSide,
       );
       await this.notificationsService.send(
         req.passengerId,
