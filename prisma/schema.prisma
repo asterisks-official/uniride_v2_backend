@@ -48,6 +48,25 @@ enum GenderPreference {
   FEMALE_ONLY
 }
 
+/// The user's own gender. Distinct from GenderPreference, which is a filter on
+/// a ride. Without this, FEMALE_ONLY rides cannot actually be enforced.
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+/// Which side of the market the user is currently looking at.
+///
+/// Deliberately separate from UserRole: `role` is the *capability* (may this
+/// user drive?) and is admin-granted, while `activeMode` is the *view* and is
+/// user-toggled. Merging them would let a user self-grant the rider capability
+/// by switching, or lose their approval by switching back.
+enum ActiveMode {
+  PASSENGER
+  RIDER
+}
+
 enum MessageType {
   TEXT
   SYSTEM
@@ -109,6 +128,10 @@ model User {
   studentIdNumber   String?   @map("student_id_number")
   bio               String?
   role              UserRole  @default(PASSENGER)
+  /// Nullable so the ~1,000 existing accounts keep working; required for new
+  /// signups and collected from older accounts via a one-time prompt.
+  gender            Gender?
+  activeMode        ActiveMode @default(PASSENGER) @map("active_mode")
   isEmailVerified   Boolean   @default(false) @map("is_email_verified")
   isPhoneVerified   Boolean   @default(false) @map("is_phone_verified")
   isSuspended       Boolean   @default(false) @map("is_suspended")
@@ -147,6 +170,9 @@ model RiderProfile {
   licensePlate       String             @map("license_plate")
   licenseDocUrl      String             @map("license_doc_url")
   vehiclePhotoUrl    String             @map("vehicle_photo_url")
+  /// Photo of the number plate specifically — the vehicle photo does not
+  /// reliably show it, and it is what makes a vehicle identifiable.
+  licensePlatePhotoUrl String?          @map("license_plate_photo_url")
   studentIdDocUrl    String?            @map("student_id_doc_url")
   verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
   adminNote          String?            @map("admin_note")

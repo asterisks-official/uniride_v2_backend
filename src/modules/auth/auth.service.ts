@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { AuthRepository } from './auth.repository';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, JoinAs } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -44,7 +44,12 @@ export class AuthService {
 
   async register(
     dto: RegisterDto,
-  ): Promise<{ message: string; accessToken: string; devOtp?: string }> {
+  ): Promise<{
+    message: string;
+    accessToken: string;
+    riderApplicationRequired?: boolean;
+    devOtp?: string;
+  }> {
     const isDev = this.config.get<string>('nodeEnv') !== 'production';
     const existing = await this.authRepository.findUserByEmail(dto.email);
 
@@ -60,6 +65,8 @@ export class AuthService {
           name: dto.name,
           university: dto.university,
           phone: dto.phone,
+          gender: dto.gender,
+          studentIdNumber: dto.studentIdNumber,
         });
         const otp = await this.sendEmailOtp(refreshed, 'email_verification');
         return {
@@ -78,6 +85,11 @@ export class AuthService {
       name: dto.name,
       university: dto.university,
       phone: dto.phone,
+      gender: dto.gender,
+      studentIdNumber: dto.studentIdNumber,
+      // Note: role and activeMode are deliberately left at their PASSENGER
+      // defaults even when joinAs = RIDER. Signing up as a rider only starts
+      // the application; the capability arrives with admin approval.
     });
 
     const otp = await this.sendEmailOtp(user, 'email_verification');
@@ -85,6 +97,9 @@ export class AuthService {
     return {
       message: 'Verification OTP sent to your email',
       accessToken: this.signEmailVerificationToken(user),
+      // Tells the client whether to route into the rider application after
+      // OTP verification, or straight into the passenger feed.
+      riderApplicationRequired: dto.joinAs === JoinAs.RIDER,
       ...(isDev && { devOtp: otp }),
     };
   }
@@ -95,6 +110,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      activeMode: user.activeMode,
     };
     return this.jwtService.sign(payload, { expiresIn: '15m' });
   }
@@ -252,11 +268,20 @@ export class AuthService {
     await this.authRepository.markOtpUsed(record.id);
   }
 
+  /// Mint a fresh token pair for a user whose payload-carried state changed.
+  ///
+  /// Needed because JwtStrategy does not read the database: switching active
+  /// mode has no effect until the token itself is replaced.
+  async reissueTokens(user: User): Promise<AuthTokens> {
+    return this.issueTokens(user);
+  }
+
   private async issueTokens(user: User): Promise<AuthTokens> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      activeMode: user.activeMode,
     };
     const accessToken = this.jwtService.sign(payload);
 

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import type { UserRole } from '@prisma/client';
+import type { ActiveMode, UserRole } from '@prisma/client';
 import { RidesRepository } from './rides.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRideDto } from './dto/create-ride.dto';
@@ -97,16 +97,20 @@ export class RidesService {
   // ── Search ─────────────────────────────────────────────────────────────────
 
   async searchRides(
-    viewer: { id: string; role: UserRole },
+    viewer: { id: string; activeMode: ActiveMode },
     dto: SearchRidesDto,
   ) {
     const { skip, take, page, limit } = getPaginationParams(dto);
 
-    // Show the complementary side only: riders see passenger REQUESTs, everyone
-    // else sees driver OFFERs. Never show the viewer their own posts.
+    // Show the complementary side only: rider mode sees passenger REQUESTs,
+    // passenger mode sees driver OFFERs. Never show the viewer their own posts.
+    //
+    // Keyed on activeMode (the view the user chose), not role (the capability
+    // an admin granted) — an approved rider browsing as a passenger should see
+    // offers. Tokens minted before activeMode existed default to PASSENGER.
     const where: Record<string, unknown> = {
       status: 'SEARCHING',
-      type: viewer.role === 'RIDER' ? 'REQUEST' : 'OFFER',
+      type: viewer.activeMode === 'RIDER' ? 'REQUEST' : 'OFFER',
       NOT: { creatorId: viewer.id },
     };
 
@@ -254,11 +258,11 @@ export class RidesService {
   // ── Request to join ────────────────────────────────────────────────────────
 
   async requestRide(
-    requesterId: string,
-    requesterRole: UserRole,
+    requester: { id: string; role: UserRole; activeMode: ActiveMode },
     rideId: string,
     dto: RequestRideDto,
   ) {
+    const requesterId = requester.id;
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.creatorId === requesterId)
@@ -267,15 +271,42 @@ export class RidesService {
       throw new ConflictException('Ride is not accepting requests');
     }
 
-    // The requester must be the complement of the post: passengers join ride
-    // offers, verified riders fulfil ride requests.
-    if (ride.type === 'OFFER' && requesterRole !== 'PASSENGER') {
-      throw new ForbiddenException('Only passengers can join a ride offer');
-    }
-    if (ride.type === 'REQUEST' && requesterRole !== 'RIDER') {
+    // The requester must be the complement of the post: passenger mode joins
+    // ride offers, rider mode fulfils ride requests.
+    //
+    // Keyed on activeMode, not role — an approved rider browsing as a
+    // passenger is a student who needs a lift today, and gating this on the
+    // capability would show them a feed of offers they cannot act on.
+    if (ride.type === 'OFFER' && requester.activeMode !== 'PASSENGER') {
       throw new ForbiddenException(
-        'Only verified riders can fulfil a ride request',
+        'Switch to passenger mode to join a ride offer',
       );
+    }
+    if (ride.type === 'REQUEST') {
+      // Mode alone would suffice (rider mode requires approval), but the
+      // capability is re-checked here because this is the money path.
+      if (requester.activeMode !== 'RIDER' || requester.role !== 'RIDER') {
+        throw new ForbiddenException(
+          'Only verified riders can fulfil a ride request',
+        );
+      }
+    }
+
+    // Gender restriction. Until now this was stored on the ride and filtered
+    // in search, but never verified — anyone could join a female-only ride by
+    // opening it directly.
+    if (ride.genderPref !== 'ANY') {
+      const gender = await this.ridesRepository.findRequesterGender(requesterId);
+      const required = ride.genderPref === 'FEMALE_ONLY' ? 'FEMALE' : 'MALE';
+      if (gender !== required) {
+        // Fails closed for users with no gender recorded: this is a safety
+        // control, so an unknown value must not pass.
+        throw new ForbiddenException(
+          gender === null
+            ? 'Add your gender to your profile before joining this ride.'
+            : `This ride is ${required === 'FEMALE' ? 'female' : 'male'}-only.`,
+        );
+      }
     }
 
     const existing = await this.ridesRepository.findRequest(

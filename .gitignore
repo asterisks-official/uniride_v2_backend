@@ -25,3 +25,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+
+# Production deployment secrets — never commit
+deploy/secrets/
+.env.production
+
+# Local-machine-only compose overrides (host port remaps, etc.)
+docker-compose.override.yml

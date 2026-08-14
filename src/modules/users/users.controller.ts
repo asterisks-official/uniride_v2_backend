@@ -21,6 +21,7 @@ import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateRiderProfileDto } from './dto/create-rider-profile.dto';
 import { UpdateRiderProfileDto } from './dto/update-rider-profile.dto';
+import { SwitchModeDto } from './dto/switch-mode.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -51,6 +52,22 @@ export class UsersController {
   @ApiOperation({ summary: 'Soft-delete own account' })
   deleteMe(@CurrentUser() user: JwtPayload) {
     return this.usersService.deleteMe(user.sub);
+  }
+
+  @Post('me/active-mode')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Switch between passenger and rider mode',
+    description:
+      'Changes only which side of the market is browsed; the rider capability itself is admin-granted and untouched. Returns a new token pair, because the mode is carried in the JWT — the client must replace its stored tokens and clear any cached feed.',
+  })
+  @ApiResponse({ status: 200, description: 'Mode switched; new tokens issued' })
+  @ApiResponse({
+    status: 403,
+    description: 'Rider mode requested without an approved rider profile',
+  })
+  switchMode(@CurrentUser() user: JwtPayload, @Body() dto: SwitchModeDto) {
+    return this.usersService.switchMode(user.sub, dto);
   }
 
   // ── Public profile ─────────────────────────────────────────────────────────

@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import type { Ride, RideRequest, Prisma, RequestStatus } from '@prisma/client';
+import type {
+  Ride,
+  RideRequest,
+  Prisma,
+  RequestStatus,
+  Gender,
+} from '@prisma/client';
 
 const riderSelect = {
   id: true,
@@ -25,6 +31,16 @@ const requestPassengerSelect = {
 @Injectable()
 export class RidesRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /// Gender is needed to enforce a ride's GenderPreference, which until now
+  /// was stored and filtered but never actually checked against the requester.
+  async findRequesterGender(userId: string): Promise<Gender | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { gender: true },
+    });
+    return user?.gender ?? null;
+  }
 
   async create(data: Prisma.RideCreateInput): Promise<Ride> {
     return this.prisma.ride.create({ data });

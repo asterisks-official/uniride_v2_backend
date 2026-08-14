@@ -205,6 +205,12 @@ export class AdminService {
         where: { id: userId },
         data: {
           role: dto.action === VerifyAction.APPROVE ? 'RIDER' : 'PASSENGER',
+          // Move the view along with the capability. On approval the user
+          // wants the rider side immediately; on rejection or revocation they
+          // must be pushed back, or they would keep browsing rider content
+          // until their token expires.
+          activeMode:
+            dto.action === VerifyAction.APPROVE ? 'RIDER' : 'PASSENGER',
         },
       }),
     ]);

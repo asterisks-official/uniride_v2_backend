@@ -51,7 +51,7 @@ export class RidesController {
   @ApiOperation({ summary: 'Search available rides (complement of your role)' })
   searchRides(@CurrentUser() user: JwtPayload, @Query() dto: SearchRidesDto) {
     return this.ridesService.searchRides(
-      { id: user.sub, role: user.role },
+      { id: user.sub, activeMode: user.activeMode ?? 'PASSENGER' },
       dto,
     );
   }
@@ -107,7 +107,15 @@ export class RidesController {
     @Param('rideId', ParseUUIDPipe) rideId: string,
     @Body() dto: RequestRideDto,
   ) {
-    return this.ridesService.requestRide(user.sub, user.role, rideId, dto);
+    return this.ridesService.requestRide(
+      {
+        id: user.sub,
+        role: user.role,
+        activeMode: user.activeMode ?? 'PASSENGER',
+      },
+      rideId,
+      dto,
+    );
   }
 
   // ── View requests (creator only, enforced in service) ────────────────────
