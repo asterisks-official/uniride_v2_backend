@@ -1,0 +1,77 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectNetworkingAndImages",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeImages",
+        "ec2:DescribeKeyPairs",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeTags",
+        "ec2:DescribeAvailabilityZones",
+        "ssm:GetParameters"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ProvisionBackendHost",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateKeyPair",
+        "ec2:CreateSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RunInstances",
+        "ec2:StartInstances",
+        "ec2:StopInstances",
+        "ec2:RebootInstances",
+        "ec2:TerminateInstances",
+        "ec2:CreateTags",
+        "ec2:AllocateAddress",
+        "ec2:AssociateAddress",
+        "ec2:DisassociateAddress",
+        "ec2:ReleaseAddress"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-southeast-1"
+        }
+      }
+    },
+    {
+      "Sid": "ManageUploadsBucket",
+      "Effect": "Allow",
+      "Action": ["s3:*"],
+      "Resource": [
+        "arn:aws:s3:::uniride-uploads-prod",
+        "arn:aws:s3:::uniride-uploads-prod/*"
+      ]
+    },
+    {
+      "Sid": "CreateScopedAppUser",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateUser",
+        "iam:GetUser",
+        "iam:PutUserPolicy",
+        "iam:GetUserPolicy",
+        "iam:CreateAccessKey",
+        "iam:ListAccessKeys",
+        "iam:DeleteAccessKey",
+        "iam:ListAttachedUserPolicies",
+        "iam:ListUserPolicies"
+      ],
+      "Resource": "arn:aws:iam::444158823569:user/uniride-app-*"
+    }
+  ]
+}

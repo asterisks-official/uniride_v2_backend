@@ -62,10 +62,20 @@ export class UploadsService {
     const publicUrl = `${this.cdnUrl}/${key}`;
 
     if (!this.s3) {
-      // Dev fallback — return a mock upload URL so frontend flow can be tested
-      const mockUploadUrl = `http://localhost:3000/dev-upload-mock?key=${encodeURIComponent(key)}`;
+      // Dev fallback — a real endpoint on this server stands in for S3, so the
+      // app's upload-then-save flow runs unchanged. See DevUploadsController.
+      //
+      // publicUrl still points at the CDN host and will not resolve locally:
+      // it is what gets stored on the profile, and rewriting it to localhost
+      // would fail @IsUrl() on the way back in. Fetch the bytes from the dev
+      // route with the same key if you need to see them.
+      const devOrigin = this.config.get<string>(
+        'devUploadOrigin',
+        'http://localhost:3000',
+      );
+      const uploadUrl = `${devOrigin}/api/v1/uploads/dev-object?key=${encodeURIComponent(key)}`;
       this.logger.log(`[DEV] Mock presign: ${key}`);
-      return { uploadUrl: mockUploadUrl, publicUrl, key };
+      return { uploadUrl, publicUrl, key };
     }
 
     const command = new PutObjectCommand({

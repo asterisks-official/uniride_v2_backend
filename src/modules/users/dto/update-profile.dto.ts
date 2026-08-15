@@ -5,9 +5,27 @@ import {
   MaxLength,
   IsMobilePhone,
   IsUrl,
+  IsEnum,
+  IsNotEmpty,
 } from 'class-validator';
+import { Gender } from '@prisma/client';
 
 export class UpdateProfileDto {
+  @ApiPropertyOptional({
+    enum: Gender,
+    description:
+      'Accounts created before gender was required use this to fill it in.',
+  })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @ApiPropertyOptional({ example: '221-15-6029' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  studentIdNumber?: string;
   @ApiPropertyOptional({ example: 'Shakib Ahmed' })
   @IsOptional()
   @IsString()

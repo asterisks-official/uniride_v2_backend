@@ -15,6 +15,10 @@ import {
   getPaginationParams,
   buildPaginationMeta,
 } from '../../shared/utils/pagination.util';
+import {
+  MAX_RIDER_REJECTIONS,
+  identitiesToBlock,
+} from '../../shared/utils/identity';
 
 @Injectable()
 export class AdminService {
@@ -186,17 +190,31 @@ export class AdminService {
     });
     if (!profile) throw new NotFoundException('Rider profile not found');
 
-    const newStatus =
-      dto.action === VerifyAction.APPROVE ? 'APPROVED' : 'REJECTED';
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
 
-    // Approval is what actually grants the RIDER role; rejection (or revocation
-    // of a previously approved rider) drops the user back to PASSENGER.
+    const approving = dto.action === VerifyAction.APPROVE;
+    const newStatus = approving ? 'APPROVED' : 'REJECTED';
+
+    // Rejection is a strike. The third one is final: the applicant has had
+    // three goes at producing genuine documents, and a fourth attempt under a
+    // fresh email is the thing the ban list exists to stop.
+    const rejectionCount = approving
+      ? profile.rejectionCount
+      : profile.rejectionCount + 1;
+    const banned = !approving && rejectionCount >= MAX_RIDER_REJECTIONS;
+
+    const banReason =
+      `Rider application rejected ${MAX_RIDER_REJECTIONS} times` +
+      (dto.note ? `. Last reason: ${dto.note}` : '');
+
     const [updated] = await this.prisma.$transaction([
       this.prisma.riderProfile.update({
         where: { userId },
         data: {
           verificationStatus: newStatus,
           adminNote: dto.note ?? null,
+          rejectionCount,
           reviewedAt: new Date(),
           reviewedBy: adminId,
         },
@@ -204,15 +222,32 @@ export class AdminService {
       this.prisma.user.update({
         where: { id: userId },
         data: {
-          role: dto.action === VerifyAction.APPROVE ? 'RIDER' : 'PASSENGER',
+          // Approval is what actually grants the RIDER role; rejection (or
+          // revocation of a previously approved rider) drops them back to
+          // PASSENGER.
+          role: approving ? 'RIDER' : 'PASSENGER',
           // Move the view along with the capability. On approval the user
           // wants the rider side immediately; on rejection or revocation they
           // must be pushed back, or they would keep browsing rider content
           // until their token expires.
-          activeMode:
-            dto.action === VerifyAction.APPROVE ? 'RIDER' : 'PASSENGER',
+          activeMode: approving ? 'RIDER' : 'PASSENGER',
+          ...(banned && { isSuspended: true, suspendedReason: banReason }),
         },
       }),
+      // Bans the identifiers, not just the login. createMany + skipDuplicates
+      // because an identifier may already be listed from an earlier ban.
+      ...(banned
+        ? [
+            this.prisma.blockedIdentity.createMany({
+              data: identitiesToBlock(user).map((identity) => ({
+                ...identity,
+                reason: banReason,
+                userId,
+              })),
+              skipDuplicates: true,
+            }),
+          ]
+        : []),
     ]);
 
     await this.logAudit(
@@ -224,21 +259,29 @@ export class AdminService {
       {
         status: newStatus,
         note: dto.note,
+        rejectionCount,
+        banned,
       },
     );
 
-    const notifType =
-      dto.action === VerifyAction.APPROVE
-        ? 'VERIFICATION_APPROVED'
-        : 'VERIFICATION_REJECTED';
-    const notifTitle =
-      dto.action === VerifyAction.APPROVE
-        ? 'Rider profile approved!'
-        : 'Rider profile rejected';
-    const notifBody =
-      dto.action === VerifyAction.APPROVE
-        ? 'Your rider profile has been approved. You can now post ride offers.'
-        : `Your rider profile was rejected. ${dto.note ? `Reason: ${dto.note}` : 'Please review your documents.'}`;
+    const attemptsLeft = MAX_RIDER_REJECTIONS - rejectionCount;
+    const reason = dto.note
+      ? `Reason: ${dto.note}`
+      : 'Please review your documents.';
+
+    const notifType = approving
+      ? 'VERIFICATION_APPROVED'
+      : 'VERIFICATION_REJECTED';
+    const notifTitle = approving
+      ? 'Rider profile approved!'
+      : banned
+        ? 'Account blocked'
+        : 'Rider application rejected';
+    const notifBody = approving
+      ? 'Your rider profile has been approved. You can now post ride offers.'
+      : banned
+        ? `${reason} This was your ${MAX_RIDER_REJECTIONS}th rejected application, so the account has been blocked.`
+        : `${reason} You can correct your details and resubmit — ${attemptsLeft} ${attemptsLeft === 1 ? 'attempt' : 'attempts'} left.`;
 
     await this.notificationsService.send(
       userId,

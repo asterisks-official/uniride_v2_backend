@@ -1,0 +1,31 @@
+# Caddy fetches and renews a Let's Encrypt certificate for {$DOMAIN}
+# automatically. With a sslip.io hostname (api-<dashed-ip>.sslip.io) the DNS
+# A record resolves to this host with no DNS setup, so the HTTP-01 challenge
+# succeeds out of the box.
+
+{$DOMAIN} {
+	encode gzip
+
+	# Socket.IO needs the connection upgraded; reverse_proxy passes through
+	# Upgrade/Connection headers by default, so /socket.io works unchanged.
+	reverse_proxy app:3000 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

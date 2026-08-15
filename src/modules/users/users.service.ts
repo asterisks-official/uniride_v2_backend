@@ -12,6 +12,7 @@ import { UpdateRiderProfileDto } from './dto/update-rider-profile.dto';
 import { SwitchModeDto } from './dto/switch-mode.dto';
 import { ActiveMode } from '@prisma/client';
 import type { User, UserStats, RiderProfile } from '@prisma/client';
+import { MAX_RIDER_REJECTIONS } from '../../shared/utils/identity';
 
 type ProfileWithStats = User & { stats: UserStats | null };
 
@@ -107,6 +108,9 @@ export class UsersService {
     const profile = await this.usersRepository.createRiderProfile({
       user: { connect: { id: userId } },
       ...dto,
+      // The DTO requires a selfie, and the app only produces one by passing the
+      // liveness check, so arriving here *is* the verification event.
+      faceVerifiedAt: new Date(),
     });
 
     // Role stays PASSENGER until an admin approves the profile (verificationStatus
@@ -128,8 +132,19 @@ export class UsersService {
     // they correct, and createRiderProfile refuses because one already exists.
     const resubmitting = existing.verificationStatus === 'REJECTED';
 
+    // The account is suspended at this point, so this is belt and braces —
+    // but the rule that three rejections is the end lives here, not only in
+    // whichever guard happens to run first.
+    if (resubmitting && existing.rejectionCount >= MAX_RIDER_REJECTIONS) {
+      throw new ForbiddenException(
+        `This application was rejected ${MAX_RIDER_REJECTIONS} times and can no longer be resubmitted.`,
+      );
+    }
+
     return this.usersRepository.updateRiderProfile(userId, {
       ...dto,
+      // A replacement selfie means the liveness check ran again.
+      ...(dto.selfieUrl && { faceVerifiedAt: new Date() }),
       ...(resubmitting && {
         verificationStatus: 'PENDING',
         adminNote: null,

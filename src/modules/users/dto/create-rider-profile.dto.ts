@@ -51,6 +51,21 @@ export class CreateRiderProfileDto {
   @IsUrl()
   vehiclePhotoUrl: string;
 
+  @ApiProperty({
+    description:
+      'CloudFront URL of the selfie captured by the in-app liveness check. Required — a rider application without a verified face is not reviewable.',
+  })
+  @IsUrl()
+  selfieUrl: string;
+
+  @ApiPropertyOptional({
+    description:
+      'CloudFront URL of a photo of the number plate. Distinct from the vehicle photo, which rarely shows the plate legibly.',
+  })
+  @IsOptional()
+  @IsUrl()
+  licensePlatePhotoUrl?: string;
+
   @ApiPropertyOptional({
     description: 'CloudFront URL of uploaded student ID doc',
   })

@@ -64,6 +64,11 @@ export default () => ({
     ),
   },
 
+  // Where the app reaches this server when S3 is not configured, so presign can
+  // hand out an upload URL that actually resolves from the device. The default
+  // works over `adb reverse tcp:3000 tcp:3000`.
+  devUploadOrigin: process.env.DEV_UPLOAD_ORIGIN ?? 'http://localhost:3000',
+
   aws: {
     region: process.env.AWS_REGION,
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,

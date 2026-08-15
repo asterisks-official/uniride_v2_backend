@@ -1,0 +1,95 @@
+# Production stack for the single-EC2 deployment.
+# Only Caddy is reachable from the internet; app, Postgres and Redis stay on the
+# internal bridge network.
+#
+#   caddy :80/:443 ──▶ app :3000 ──┬──▶ postgres :5432
+#                                  └──▶ redis :6379
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: uniride_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN must be set — run provision-ec2.sh first}
+    depends_on:
+      - app
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: production
+    image: uniride-backend:latest
+    container_name: uniride_app
+    restart: unless-stopped
+    # Migrations run before the server starts; the container exits non-zero and
+    # is restarted by Docker if they fail, so a bad migration never serves traffic.
+    command: sh -c "./node_modules/.bin/prisma migrate deploy && node dist/main"
+    env_file:
+      - ./secrets/.env.production
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: uniride_postgres
+    restart: unless-stopped
+    env_file:
+      - ./secrets/.env.production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: uniride_redis
+    restart: unless-stopped
+    env_file:
+      - ./secrets/.env.production
+    # appendonly keeps BullMQ jobs across restarts.
+    command: sh -c "redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

@@ -1,13 +1,22 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsIn } from 'class-validator';
 
+/// Every folder the app is allowed to write into. `license_plate` and `selfie`
+/// belong here because the rider application uploads both — the plate photo is
+/// separate from the vehicle photo, and the selfie is the live face check.
+export const UPLOAD_FOLDERS = [
+  'avatar',
+  'license',
+  'vehicle_photo',
+  'license_plate',
+  'student_id',
+  'selfie',
+] as const;
+
 export class PresignDto {
-  @ApiProperty({
-    enum: ['avatar', 'license', 'vehicle_photo', 'student_id'],
-    example: 'avatar',
-  })
+  @ApiProperty({ enum: UPLOAD_FOLDERS, example: 'avatar' })
   @IsString()
-  @IsIn(['avatar', 'license', 'vehicle_photo', 'student_id'])
+  @IsIn(UPLOAD_FOLDERS as unknown as string[])
   folder: string;
 
   @ApiProperty({
