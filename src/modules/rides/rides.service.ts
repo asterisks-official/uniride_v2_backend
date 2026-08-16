@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import type { ActiveMode, UserRole } from '@prisma/client';
+import type {
+  ActiveMode,
+  Gender,
+  GenderPreference,
+  UserRole,
+} from '@prisma/client';
 import { RidesRepository } from './rides.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRideDto } from './dto/create-ride.dto';
@@ -29,6 +34,31 @@ import type { RideExpiryJobData } from '../../jobs/processors/ride-expiry.proces
 import type { RideCompletionJobData } from '../../jobs/processors/ride-completion.processor';
 
 const GEO_BOX_DEG = 0.45; // ~50 km bounding box per side
+
+/// The gender preferences a user of this gender is allowed to see and join.
+///
+/// One rule, used by the feed, the ride detail and the join check, so those
+/// three can never disagree about who a restricted ride is for. They did
+/// disagree: joining was enforced while the feed showed a female-only ride to
+/// every man on the platform, complete with the poster's name, pickup area and
+/// departure time — exposing precisely the people the preference protects.
+///
+/// Fails closed. A user with no gender recorded sees unrestricted rides only,
+/// and `OTHER` is not treated as satisfying a female- or male-only ride; that
+/// last point is a product call inherited from the join check, kept here so
+/// both behave identically.
+export function visibleGenderPrefs(
+  gender: Gender | null,
+): GenderPreference[] {
+  switch (gender) {
+    case 'FEMALE':
+      return ['ANY', 'FEMALE_ONLY'];
+    case 'MALE':
+      return ['ANY', 'MALE_ONLY'];
+    default:
+      return ['ANY'];
+  }
+}
 
 @Injectable()
 export class RidesService {
@@ -124,9 +154,18 @@ export class RidesService {
       where['seatsAvailable'] = { gte: dto.seats };
     }
 
-    if (dto.genderPref) {
-      where['genderPref'] = dto.genderPref;
-    }
+    // Hard safety filter, applied whether or not the client asked for it. The
+    // chip below can only narrow this set, never widen it — a male viewer
+    // filtering for FEMALE_ONLY gets an empty feed rather than a forbidden one.
+    const viewerGender = await this.ridesRepository.findRequesterGender(
+      viewer.id,
+    );
+    const allowed = visibleGenderPrefs(viewerGender);
+    where['genderPref'] = {
+      in: dto.genderPref
+        ? allowed.filter((pref) => pref === dto.genderPref)
+        : allowed,
+    };
 
     if (dto.originLat !== undefined && dto.originLng !== undefined) {
       where['originLat'] = {
@@ -183,9 +222,29 @@ export class RidesService {
 
   // ── Get one ────────────────────────────────────────────────────────────────
 
-  async getRide(rideId: string) {
+  async getRide(viewerId: string, rideId: string) {
     const ride = await this.ridesRepository.findWithRelations(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
+
+    // Filtering the feed alone would only hide the ride, not protect it — the
+    // id is enough to fetch the poster's name, photo, pickup area and time.
+    if (ride.genderPref !== 'ANY') {
+      const involved =
+        ride.creatorId === viewerId ||
+        ride.riderId === viewerId ||
+        ride.passengerId === viewerId ||
+        (await this.ridesRepository.findRequest(rideId, viewerId)) !== null;
+
+      if (!involved) {
+        const gender = await this.ridesRepository.findRequesterGender(viewerId);
+        if (!visibleGenderPrefs(gender).includes(ride.genderPref)) {
+          // Not Forbidden: confirming the ride exists tells the caller there
+          // is a female-only ride at this id, which is part of what leaked.
+          throw new NotFoundException('Ride not found');
+        }
+      }
+    }
+
     return ride;
   }
 
@@ -297,14 +356,15 @@ export class RidesService {
     // opening it directly.
     if (ride.genderPref !== 'ANY') {
       const gender = await this.ridesRepository.findRequesterGender(requesterId);
-      const required = ride.genderPref === 'FEMALE_ONLY' ? 'FEMALE' : 'MALE';
-      if (gender !== required) {
+      // Same rule the feed uses, so what you can see and what you can join
+      // cannot drift apart.
+      if (!visibleGenderPrefs(gender).includes(ride.genderPref)) {
         // Fails closed for users with no gender recorded: this is a safety
         // control, so an unknown value must not pass.
         throw new ForbiddenException(
           gender === null
             ? 'Add your gender to your profile before joining this ride.'
-            : `This ride is ${required === 'FEMALE' ? 'female' : 'male'}-only.`,
+            : `This ride is ${ride.genderPref === 'FEMALE_ONLY' ? 'female' : 'male'}-only.`,
         );
       }
     }

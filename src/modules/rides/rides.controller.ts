@@ -68,9 +68,16 @@ export class RidesController {
 
   @Get(':rideId')
   @ApiOperation({ summary: 'Get ride details' })
-  @ApiResponse({ status: 404, description: 'Ride not found' })
-  getRide(@Param('rideId', ParseUUIDPipe) rideId: string) {
-    return this.ridesService.getRide(rideId);
+  @ApiResponse({
+    status: 404,
+    description:
+      'Ride not found, or gender-restricted and not for this viewer — the two are deliberately indistinguishable',
+  })
+  getRide(
+    @CurrentUser() user: JwtPayload,
+    @Param('rideId', ParseUUIDPipe) rideId: string,
+  ) {
+    return this.ridesService.getRide(user.sub, rideId);
   }
 
   // ── Update (creator only, enforced in service) ────────────────────────────
