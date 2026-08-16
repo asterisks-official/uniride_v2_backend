@@ -4,12 +4,25 @@ services:
       context: .
       target: dev
     container_name: uniride_app
-    command: sh -c "npx prisma migrate deploy && npm run start:dev"
+    # `prisma generate` first, every boot. `docker compose down` removes the
+    # anonymous node_modules volume, which reverts the generated client to the
+    # copy baked into the image — one built before recent migrations. Without
+    # this the API fails to compile after any down/up with errors like
+    # "Module '@prisma/client' has no exported member 'BlockedIdentityType'",
+    # and it was a documented manual step to recover from.
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
     ports:
       - "3000:3000"
     volumes:
       - .:/app
       - /app/node_modules
+      # Uploaded documents when S3 is not configured. A named volume, not the
+      # container's writable layer, so a rebuild or `down`/`up` does not orphan
+      # every document URL already stored in the database.
+      #
+      # It is deliberately wiped by `down -v` alongside postgres_data: the rows
+      # that reference these files go with it, so the two must reset together.
+      - dev_uploads:/data/dev-uploads
     env_file:
       - .env
     environment:
@@ -18,6 +31,7 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      DEV_UPLOAD_DIR: /data/dev-uploads
       REDIS_PASSWORD: ""
       # Required on Windows — Docker volume mounts don't propagate inotify events
       CHOKIDAR_USEPOLLING: "true"
@@ -61,3 +75,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  dev_uploads:

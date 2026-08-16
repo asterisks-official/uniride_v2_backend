@@ -17,7 +17,16 @@ import { tmpdir } from 'os';
 import { dirname, join, normalize } from 'path';
 import { pipeline } from 'stream/promises';
 
-export const DEV_UPLOAD_ROOT = join(tmpdir(), 'uniride-dev-uploads');
+/**
+ * Where dev uploads are written.
+ *
+ * Backed by a named docker volume (see `docker-compose.yml`) rather than the
+ * container's writable layer — otherwise every rebuild orphans the document
+ * URLs already stored in the database. Falls back to a temp directory when run
+ * outside compose.
+ */
+export const DEV_UPLOAD_ROOT =
+  process.env.DEV_UPLOAD_DIR ?? join(tmpdir(), 'uniride-dev-uploads');
 
 /// Stands in for S3 when AWS credentials are not configured.
 ///
