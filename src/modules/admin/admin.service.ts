@@ -1,5 +1,6 @@
 import {
   Injectable,
+  ConflictException,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
@@ -208,13 +209,36 @@ export class AdminService {
     const approving = dto.action === VerifyAction.APPROVE;
     const newStatus = approving ? 'APPROVED' : 'REJECTED';
 
-    // Rejection is a strike. The third one is final: the applicant has had
-    // three goes at producing genuine documents, and a fourth attempt under a
-    // fresh email is the thing the ban list exists to stop.
-    const rejectionCount = approving
-      ? profile.rejectionCount
-      : profile.rejectionCount + 1;
-    const banned = !approving && rejectionCount >= MAX_RIDER_REJECTIONS;
+    // Deciding the same way twice is refused. Without this, two admins working
+    // the same queue entry — or one double-click — burn two of the applicant's
+    // three attempts for a single mistake, and the third is a permanent ban.
+    // A rejected applicant has to resubmit (which returns them to PENDING)
+    // before another decision is meaningful.
+    if (profile.verificationStatus === newStatus) {
+      throw new ConflictException(
+        approving
+          ? 'This rider is already approved.'
+          : 'This application has already been rejected. They must resubmit before it can be reviewed again.',
+      );
+    }
+
+    // A strike is a *failed application*, so only a rejection out of review
+    // counts as one. Revoking an already-approved rider is a different act —
+    // the admin changed their mind, the applicant did not submit anything bad —
+    // and must not push someone toward a ban they never earned.
+    const isApplicationRejection =
+      !approving && profile.verificationStatus === 'PENDING';
+
+    // The third strike is final: the applicant has had three goes at producing
+    // genuine documents, and a fourth attempt under a fresh email is the thing
+    // the ban list exists to stop.
+    const rejectionCount = isApplicationRejection
+      ? profile.rejectionCount + 1
+      : profile.rejectionCount;
+    // Tied to isApplicationRejection, not just !approving: a revocation must never
+    // be the thing that triggers a permanent ban.
+    const banned =
+      isApplicationRejection && rejectionCount >= MAX_RIDER_REJECTIONS;
 
     const banReason =
       `Rider application rejected ${MAX_RIDER_REJECTIONS} times` +
@@ -392,6 +416,71 @@ export class AdminService {
   }
 
   // ── Audit log ──────────────────────────────────────────────────────────────
+
+  /**
+   * Lifts a three-strike ban: clears the blocklist entries, un-suspends the
+   * account and resets the strike count.
+   *
+   * The ban is the most consequential thing an admin can do here — it stops the
+   * person's email, student ID *and* phone from ever registering again — and
+   * until this existed, undoing one meant hand-written SQL across three tables.
+   * An irreversible mistake is a much worse thing to ship than a recoverable one.
+   */
+  async unblockRider(adminId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { riderProfile: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const blocked = await this.prisma.blockedIdentity.findMany({
+      where: { userId },
+    });
+    if (blocked.length === 0 && !user.isSuspended) {
+      throw new ConflictException('This account is not blocked.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.blockedIdentity.deleteMany({ where: { userId } }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { isSuspended: false, suspendedReason: null },
+      }),
+      // Reset the strikes too. Leaving them at 3 would mean the next rejection
+      // re-bans immediately, which is not what "unblock" means to the admin
+      // pressing it.
+      ...(user.riderProfile
+        ? [
+            this.prisma.riderProfile.update({
+              where: { userId },
+              data: { rejectionCount: 0, adminNote: null },
+            }),
+          ]
+        : []),
+    ]);
+
+    await this.logAudit(
+      adminId,
+      'UNBLOCK_RIDER',
+      'User',
+      userId,
+      {
+        isSuspended: user.isSuspended,
+        rejectionCount: user.riderProfile?.rejectionCount ?? null,
+        blockedIdentities: blocked.map((entry) => entry.type),
+      },
+      { isSuspended: false, rejectionCount: 0, blockedIdentities: [] },
+    );
+
+    await this.notificationsService.send(
+      userId,
+      'SYSTEM',
+      'Your account has been restored',
+      'An admin has lifted the block on your account. You can apply to become a rider again.',
+    );
+
+    return { message: 'Account unblocked', clearedIdentities: blocked.length };
+  }
 
   private async logAudit(
     adminId: string,

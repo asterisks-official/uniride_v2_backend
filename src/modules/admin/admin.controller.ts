@@ -8,7 +8,12 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AdminService } from './admin.service';
 import { AdminUsersQueryDto } from './dto/admin-users-query.dto';
@@ -84,6 +89,20 @@ export class AdminController {
     @Body() dto: VerifyRiderDto,
   ) {
     return this.adminService.verifyRider(admin.sub, userId, dto);
+  }
+
+  @Patch('riders/:userId/unblock')
+  @ApiOperation({
+    summary: 'Lift a three-strike ban',
+    description:
+      'Clears the blocklist entries for this account, un-suspends it and resets the strike count.',
+  })
+  @ApiResponse({ status: 409, description: 'Account is not blocked' })
+  unblockRider(
+    @CurrentUser() admin: JwtPayload,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.adminService.unblockRider(admin.sub, userId);
   }
 
   // ── Reports ────────────────────────────────────────────────────────────────
