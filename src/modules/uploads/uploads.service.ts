@@ -65,17 +65,18 @@ export class UploadsService {
       // Dev fallback — a real endpoint on this server stands in for S3, so the
       // app's upload-then-save flow runs unchanged. See DevUploadsController.
       //
-      // publicUrl still points at the CDN host and will not resolve locally:
-      // it is what gets stored on the profile, and rewriting it to localhost
-      // would fail @IsUrl() on the way back in. Fetch the bytes from the dev
-      // route with the same key if you need to see them.
+      // publicUrl points back at that endpoint rather than the CDN host, so a
+      // URL stored in dev actually resolves. Storing a cdn.uniride.app URL for
+      // a file that only exists locally made every document unviewable in the
+      // admin panel — which is the one place they need to be looked at.
       const devOrigin = this.config.get<string>(
         'devUploadOrigin',
         'http://localhost:3000',
       );
-      const uploadUrl = `${devOrigin}/api/v1/uploads/dev-object?key=${encodeURIComponent(key)}`;
+      const encoded = encodeURIComponent(key);
+      const devUrl = `${devOrigin}/api/v1/uploads/dev-object?key=${encoded}`;
       this.logger.log(`[DEV] Mock presign: ${key}`);
-      return { uploadUrl, publicUrl, key };
+      return { uploadUrl: devUrl, publicUrl: devUrl, key };
     }
 
     const command = new PutObjectCommand({

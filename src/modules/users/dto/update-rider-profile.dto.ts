@@ -15,6 +15,11 @@ import {
 /// rejection can be about the vehicle, any of the documents, or the face check,
 /// and an applicant who cannot fix the thing they were rejected for has no
 /// route back in.
+/// `require_tld: false` so a dev host like `http://localhost:3000/...` passes.
+/// These URLs are minted by the presign endpoint and echoed back by the client,
+/// so this is shape validation rather than a trust boundary.
+const URL_RULES = { require_tld: false } as const;
+
 export class UpdateRiderProfileDto {
   @ApiPropertyOptional({ example: 'motorcycle' })
   @IsOptional()
@@ -55,22 +60,22 @@ export class UpdateRiderProfileDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl(URL_RULES)
   licenseDocUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl(URL_RULES)
   vehiclePhotoUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl(URL_RULES)
   licensePlatePhotoUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl(URL_RULES)
   studentIdDocUrl?: string;
 
   @ApiPropertyOptional({
@@ -78,6 +83,6 @@ export class UpdateRiderProfileDto {
       'A fresh selfie from the liveness check. Stamps faceVerifiedAt again.',
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl(URL_RULES)
   selfieUrl?: string;
 }
