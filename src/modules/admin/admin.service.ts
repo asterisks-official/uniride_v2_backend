@@ -11,6 +11,7 @@ import { VerifyRiderDto, VerifyAction } from './dto/verify-rider.dto';
 import { ResolveReportDto, ResolveAction } from './dto/resolve-report.dto';
 import { AdminRidesQueryDto } from './dto/admin-rides-query.dto';
 import { AdminReportsQueryDto } from './dto/admin-reports-query.dto';
+import { AdminRidersQueryDto } from './dto/admin-riders-query.dto';
 import {
   getPaginationParams,
   buildPaginationMeta,
@@ -157,14 +158,25 @@ export class AdminService {
 
   // ── Rider verification ─────────────────────────────────────────────────────
 
-  async getPendingRiders(query: { page?: number; limit?: number }) {
+  async getPendingRiders(query: AdminRidersQueryDto) {
     const { skip, take, page, limit } = getPaginationParams(query);
+    // Defaults to the queue. A reviewer who cannot look up what they decided
+    // yesterday has to ask someone, so the other two statuses are reachable by
+    // the same endpoint rather than being invisible.
+    const status = query.status ?? 'PENDING';
+    // Oldest first while reviewing (fairness — first in, first seen); newest
+    // first when looking back, since a decision you want is usually a recent one.
+    const orderBy =
+      status === 'PENDING'
+        ? ({ createdAt: 'asc' } as const)
+        : ({ reviewedAt: 'desc' } as const);
+
     const [riders, total] = await Promise.all([
       this.prisma.riderProfile.findMany({
-        where: { verificationStatus: 'PENDING' },
+        where: { verificationStatus: status },
         skip,
         take,
-        orderBy: { createdAt: 'asc' },
+        orderBy,
         include: {
           user: {
             select: {
@@ -178,7 +190,7 @@ export class AdminService {
         },
       }),
       this.prisma.riderProfile.count({
-        where: { verificationStatus: 'PENDING' },
+        where: { verificationStatus: status },
       }),
     ]);
     return { riders, pagination: buildPaginationMeta(total, page, limit) };

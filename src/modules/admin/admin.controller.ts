@@ -16,6 +16,7 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
 import { VerifyRiderDto } from './dto/verify-rider.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { AdminRidesQueryDto } from './dto/admin-rides-query.dto';
+import { AdminRidersQueryDto } from './dto/admin-riders-query.dto';
 import { AdminReportsQueryDto } from './dto/admin-reports-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../shared/guards/roles.guard';
@@ -66,12 +67,13 @@ export class AdminController {
   // ── Rider verification ─────────────────────────────────────────────────────
 
   @Get('riders/pending')
-  @ApiOperation({ summary: 'List pending rider verification requests' })
-  getPendingRiders(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-  ) {
-    return this.adminService.getPendingRiders({ page, limit });
+  @ApiOperation({
+    summary: 'List rider verification requests',
+    description:
+      'Defaults to the PENDING queue. `status` widens it to APPROVED or REJECTED so a reviewer can look up a decision they already made.',
+  })
+  getPendingRiders(@Query() query: AdminRidersQueryDto) {
+    return this.adminService.getPendingRiders(query);
   }
 
   @Patch('riders/:userId/verify')
