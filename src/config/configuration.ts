@@ -92,6 +92,14 @@ export default () => ({
     dsn: process.env.SENTRY_DSN,
   },
 
+  google: {
+    /// Server-side Places/Geocoding key. Distinct from the Maps SDK key the
+    /// app ships: this one is never sent to a client, so it can be restricted
+    /// by IP rather than by bundle id. Optional — place search degrades to a
+    /// static list of Dhaka areas without it.
+    mapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+  },
+
   encryption: {
     key: process.env.ENCRYPTION_KEY,
   },

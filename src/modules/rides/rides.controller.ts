@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { RidesService } from './rides.service';
 import { CreateRideDto } from './dto/create-ride.dto';
+import { QuoteRideDto } from './dto/quote-ride.dto';
 import { SearchRidesDto } from './dto/search-rides.dto';
 import { UpdateRideDto } from './dto/update-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
@@ -58,10 +59,32 @@ export class RidesController {
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
+  @Post('quote')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Price a trip between two points',
+    description:
+      'Preview only — nothing is created and nothing is persisted. The total ' +
+      'returned here is recomputed and snapshotted when the ride is created, ' +
+      'so a stale quote can never set a price.',
+  })
+  quoteRide(@CurrentUser() user: JwtPayload, @Body() dto: QuoteRideDto) {
+    return this.ridesService.quoteRide(user.sub, dto);
+  }
+
   @Post()
-  @ApiOperation({ summary: 'Create a ride offer or request' })
+  @ApiOperation({
+    summary: 'Create a ride — instant request or scheduled post',
+  })
   createRide(@CurrentUser() user: JwtPayload, @Body() dto: CreateRideDto) {
-    return this.ridesService.createRide(user.sub, user.role, dto);
+    return this.ridesService.createRide(
+      user.sub,
+      user.role,
+      // Tokens minted before activeMode existed default to PASSENGER, matching
+      // the feed's fallback.
+      user.activeMode ?? 'PASSENGER',
+      dto,
+    );
   }
 
   // ── Get by id ──────────────────────────────────────────────────────────────

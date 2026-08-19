@@ -28,6 +28,8 @@ export const envValidationSchema = Joi.object({
   RESEND_FROM_EMAIL: Joi.string().optional(),
 
   SENTRY_DSN: Joi.string().optional(),
+  // Optional: place search falls back to a static Dhaka area list without it.
+  GOOGLE_MAPS_API_KEY: Joi.string().optional(),
   ENCRYPTION_KEY: Joi.string().length(64).required(),
 
   THROTTLE_TTL: Joi.number().default(60000),

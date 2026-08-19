@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   ConflictException,
@@ -11,12 +12,17 @@ import type {
   ActiveMode,
   Gender,
   GenderPreference,
+  RideMode,
   UserRole,
 } from '@prisma/client';
 import { RidesRepository } from './rides.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRideDto } from './dto/create-ride.dto';
+import { QuoteRideDto } from './dto/quote-ride.dto';
 import { SearchRidesDto } from './dto/search-rides.dto';
+import { FareService } from '../fare/fare.service';
+import { UniversitiesService } from '../universities/universities.service';
+import { PlacesService } from '../places/places.service';
 import { UpdateRideDto } from './dto/update-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
 import { RequestRideDto } from './dto/request-ride.dto';
@@ -35,6 +41,28 @@ import type { RideCompletionJobData } from '../../jobs/processors/ride-completio
 
 const GEO_BOX_DEG = 0.45; // ~50 km bounding box per side
 
+/// How long an INSTANT post keeps searching before it expires.
+///
+/// "Leaving now" means "leaving about now" — the window is how long that
+/// plausibly lasts on a campus commute before the post is stale.
+export const INSTANT_SEARCH_WINDOW_MS = 30 * 60 * 1000;
+
+/// When a fresh ride's expiry job should fire, as a delay from `now`.
+///
+/// SCHEDULED rides expire at departure: still SEARCHING when the trip was due
+/// to start means nobody took it. INSTANT rides *depart at creation* — their
+/// `scheduledAt` is the posting moment — so `scheduledAt - now` is zero and
+/// would expire the post the second it is born. They get the search window
+/// instead.
+export function expiryDelayMs(
+  mode: RideMode,
+  scheduledAt: Date,
+  now: Date,
+): number {
+  if (mode === 'INSTANT') return INSTANT_SEARCH_WINDOW_MS;
+  return Math.max(0, scheduledAt.getTime() - now.getTime());
+}
+
 /// The gender preferences a user of this gender is allowed to see and join.
 ///
 /// One rule, used by the feed, the ride detail and the join check, so those
@@ -47,9 +75,7 @@ const GEO_BOX_DEG = 0.45; // ~50 km bounding box per side
 /// and `OTHER` is not treated as satisfying a female- or male-only ride; that
 /// last point is a product call inherited from the join check, kept here so
 /// both behave identically.
-export function visibleGenderPrefs(
-  gender: Gender | null,
-): GenderPreference[] {
+export function visibleGenderPrefs(gender: Gender | null): GenderPreference[] {
   switch (gender) {
     case 'FEMALE':
       return ['ANY', 'FEMALE_ONLY'];
@@ -62,30 +88,84 @@ export function visibleGenderPrefs(
 
 @Injectable()
 export class RidesService {
+  private readonly logger = new Logger(RidesService.name);
+
   constructor(
     private readonly ridesRepository: RidesRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly fare: FareService,
+    private readonly universities: UniversitiesService,
+    private readonly places: PlacesService,
     @InjectQueue(QUEUE_RIDE_EXPIRY) private readonly expiryQueue: Queue,
     @InjectQueue(QUEUE_RIDE_COMPLETION) private readonly completionQueue: Queue,
   ) {}
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
-  async createRide(riderId: string, role: UserRole, dto: CreateRideDto) {
-    // Role ↔ post-type integrity: drivers offer rides, passengers request them.
-    if (dto.type === 'OFFER' && role !== 'RIDER') {
+  /**
+   * Price a trip without creating anything.
+   *
+   * Called from the compose screen on every input change, so it stays cheap:
+   * one lookup for the coefficients, then arithmetic. No campus, no
+   * direction — a trip runs between two arbitrary points.
+   */
+  async quoteRide(userId: string, dto: QuoteRideDto) {
+    const coefficients = await this.universities.fareCoefficientsFor(userId);
+    return this.fare.quote(
+      { lat: dto.fromLat, lng: dto.fromLng },
+      { lat: dto.toLat, lng: dto.toLng },
+      coefficients,
+    );
+  }
+
+  async createRide(
+    riderId: string,
+    role: UserRole,
+    activeMode: ActiveMode,
+    dto: CreateRideDto,
+  ) {
+    // Post type follows the *view* the user is in, not the capability an admin
+    // granted. An approved rider browsing as a passenger is a student who
+    // needs a lift today, and must be able to ask for one.
+    if (dto.type === 'OFFER') {
+      if (role !== 'RIDER') {
+        throw new ForbiddenException(
+          'Only verified riders can offer a ride. Complete rider verification first.',
+        );
+      }
+      if (activeMode !== 'RIDER') {
+        throw new ForbiddenException('Switch to rider mode to offer a ride.');
+      }
+    }
+    if (dto.type === 'REQUEST' && activeMode !== 'PASSENGER') {
       throw new ForbiddenException(
-        'Only verified riders can offer a ride. Complete rider verification first.',
+        'Switch to passenger mode to request a ride.',
       );
     }
-    if (dto.type === 'REQUEST' && role !== 'PASSENGER') {
-      throw new ForbiddenException('Only passengers can request a ride.');
+
+    const mode = dto.mode ?? 'SCHEDULED';
+
+    // An INSTANT ride is for right now, so it carries the request time rather
+    // than a chosen one. Keeping the column non-null is what lets ordering,
+    // the date filter and the expiry job stay free of null branches.
+    let scheduledAt: Date;
+    if (mode === 'INSTANT') {
+      // Both sides may post for *now*. A rider leaving this minute saying
+      // "who wants a lift?" is as valid as a passenger asking for one — this
+      // is a marketplace with push, not a dispatch queue, so there is no
+      // online state that a rider has to be in first.
+      scheduledAt = new Date();
+    } else {
+      if (!dto.scheduledAt) {
+        throw new BadRequestException('scheduledAt is required for a scheduled ride');
+      }
+      scheduledAt = new Date(dto.scheduledAt);
+      if (scheduledAt <= new Date()) {
+        throw new BadRequestException('scheduledAt must be a future date');
+      }
     }
 
-    const scheduledAt = new Date(dto.scheduledAt);
-    if (scheduledAt <= new Date()) {
-      throw new BadRequestException('scheduledAt must be a future date');
-    }
+    await this.assertMayRestrictByGender(riderId, dto.genderPref);
 
     // The creator occupies the side matching their role; the other side is
     // filled when a counterpart is matched. OFFER → creator is the driver,
@@ -95,23 +175,33 @@ export class RidesService {
         ? { rider: { connect: { id: riderId } } }
         : { passenger: { connect: { id: riderId } } };
 
+    const trip = await this.resolveTrip(riderId, dto);
+
     const ride = await this.ridesRepository.create({
       type: dto.type,
-      originAddress: dto.originAddress,
-      originLat: dto.originLat,
-      originLng: dto.originLng,
-      destAddress: dto.destAddress,
-      destLat: dto.destLat,
-      destLng: dto.destLng,
-      fare: dto.fare,
-      seatsAvailable: dto.seatsAvailable ?? 1,
+      mode,
+      ...trip.rideFields,
+      // Bike-only: every ride carries one pillion. A client-sent seat count is
+      // ignored rather than rejected, so v1 builds keep posting.
+      seatsAvailable: 1,
       genderPref: dto.genderPref ?? 'ANY',
       scheduledAt,
       creator: { connect: { id: riderId } },
       ...counterpartSide,
+      ...(trip.stops.length > 0 && { stops: { create: trip.stops } }),
+      ...(dto.campusId && { campus: { connect: { id: dto.campusId } } }),
+      ...(dto.direction && { direction: dto.direction }),
     });
 
-    const delay = Math.max(0, scheduledAt.getTime() - Date.now());
+    // Best-effort: surfacing the place someone posts from most often is worth
+    // a write, but never worth failing a post over.
+    if (trip.isTripShape) {
+      void this.places
+        .touch(riderId, trip.rideFields.originLat, trip.rideFields.originLng)
+        .catch(() => undefined);
+    }
+
+    const delay = expiryDelayMs(mode, scheduledAt, new Date());
     await this.expiryQueue.add(
       'expire',
       { rideId: ride.id } satisfies RideExpiryJobData,
@@ -121,7 +211,189 @@ export class RidesService {
       },
     );
 
+    // Fire-and-forget. A post that succeeded must not fail because a push
+    // did — the ride exists either way, and the feed still shows it.
+    void this.announceNewRide(ride, riderId).catch((err) =>
+      this.logger.warn(`Could not announce ride ${ride.id}`, err),
+    );
+
     return ride;
+  }
+
+  /**
+   * Tells the other side of the market that a ride has been posted.
+   *
+   * This is what replaces going online. Riders do not sit in the app waiting
+   * to be dispatched to — they get pushed when a trip appears and take it if
+   * they want it. A passenger's request reaches every verified rider; a
+   * rider's offer reaches passengers.
+   *
+   * Everyone, not the nearest few. At one campus with a couple of dozen
+   * riders, ranking by proximity would filter out most of the people who might
+   * actually say yes. `findRecipientsForNewRide` caps the fan-out as a safety
+   * valve; the day that cap is reached is the day to start ranking.
+   */
+  private async announceNewRide(
+    ride: { id: string; type: string; mode: string; originAddress: string; destAddress: string; genderPref: GenderPreference; scheduledAt: Date; fare: unknown; universityId: string | null },
+    posterId: string,
+  ): Promise<void> {
+    const forRiders = ride.type === 'REQUEST';
+
+    const recipients = await this.ridesRepository.findRecipientsForNewRide({
+      posterId,
+      forRiders,
+      genderPref: ride.genderPref,
+      universityId: ride.universityId,
+    });
+    if (recipients.length === 0) return;
+
+    const when =
+      ride.mode === 'INSTANT'
+        ? 'now'
+        : ride.scheduledAt.toLocaleString('en-GB', {
+            weekday: 'short',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+
+    const title = forRiders
+      ? `Ride needed ${when} · ৳${ride.fare}`
+      : `Ride available ${when} · ৳${ride.fare}`;
+
+    await Promise.all(
+      recipients.map((r) =>
+        this.notificationsService.send(
+          r.id,
+          'RIDE_POSTED',
+          title,
+          `${ride.originAddress} → ${ride.destAddress}`,
+          { rideId: ride.id, type: ride.type, mode: ride.mode },
+        ),
+      ),
+    );
+  }
+
+  /**
+   * A gender-restricted ride may only be posted by someone of that gender.
+   *
+   * Without this the restriction is worse than useless: a man could post a
+   * FEMALE_ONLY offer, the join check would admit only women, and a woman
+   * would accept it believing the driver was female. The preference would be
+   * actively misleading the people it exists to protect.
+   *
+   * `visibleGenderPrefs` already encodes the same rule for seeing and joining
+   * a ride; posting is the third door into it and was the one left open.
+   *
+   * Fails closed for accounts with no gender recorded — they may post
+   * unrestricted rides only, and are told how to fix it.
+   */
+  private async assertMayRestrictByGender(
+    userId: string,
+    genderPref: GenderPreference | undefined,
+  ): Promise<void> {
+    if (!genderPref || genderPref === 'ANY') return;
+
+    const gender = await this.ridesRepository.findRequesterGender(userId);
+    if (!visibleGenderPrefs(gender).includes(genderPref)) {
+      throw new ForbiddenException(
+        gender === null
+          ? 'Add your gender to your profile before posting a gender-restricted ride.'
+          : `Only ${genderPref === 'FEMALE_ONLY' ? 'women' : 'men'} can post a ${
+              genderPref === 'FEMALE_ONLY' ? 'women' : 'men'
+            }-only ride.`,
+      );
+    }
+  }
+
+  /**
+   * Turns whichever shape the client sent into ride columns, stop rows and a
+   * price.
+   *
+   * **Trip shape** — two real points. The fare is computed here rather than
+   * trusted from the request, and both ends get a stop row carrying the coarse
+   * area label that strangers see.
+   *
+   * **Legacy shape** — flat fields and a client fare, passed through as-is.
+   * Those rides get no stop rows, and everything downstream has to tolerate
+   * that (see the ride-creation plan §5.3).
+   *
+   * The `origin*` / `dest*` columns are written either way: they are NOT NULL,
+   * v1 clients read them, and they stay until v1 is retired.
+   */
+  private async resolveTrip(userId: string, dto: CreateRideDto) {
+    const { pickup, destination } = dto;
+    const isTripShape = Boolean(pickup && destination);
+
+    if (!isTripShape) {
+      if (
+        dto.originAddress === undefined ||
+        dto.originLat === undefined ||
+        dto.originLng === undefined ||
+        dto.destAddress === undefined ||
+        dto.destLat === undefined ||
+        dto.destLng === undefined ||
+        dto.fare === undefined
+      ) {
+        throw new BadRequestException(
+          'Send either pickup + destination, or the full legacy set of ' +
+            'addresses, coordinates and a fare.',
+        );
+      }
+      return {
+        isTripShape,
+        stops: [] as {
+          sequence: number;
+          lat: number;
+          lng: number;
+          areaLabel: string;
+        }[],
+        rideFields: {
+          originAddress: dto.originAddress,
+          originLat: dto.originLat,
+          originLng: dto.originLng,
+          destAddress: dto.destAddress,
+          destLat: dto.destLat,
+          destLng: dto.destLng,
+          fare: dto.fare,
+        },
+      };
+    }
+
+    const coefficients = await this.universities.fareCoefficientsFor(userId);
+    const quote = await this.fare.quote(
+      { lat: pickup!.lat, lng: pickup!.lng },
+      { lat: destination!.lat, lng: destination!.lng },
+      coefficients,
+    );
+
+    return {
+      isTripShape,
+      // Sequence 0 is the pickup — the point dispatch and the proximity feed
+      // both rank against. Sequence 1 is the destination.
+      stops: [
+        {
+          sequence: 0,
+          lat: pickup!.lat,
+          lng: pickup!.lng,
+          areaLabel: pickup!.areaLabel,
+        },
+        {
+          sequence: 1,
+          lat: destination!.lat,
+          lng: destination!.lng,
+          areaLabel: destination!.areaLabel,
+        },
+      ],
+      rideFields: {
+        originAddress: pickup!.address,
+        originLat: pickup!.lat,
+        originLng: pickup!.lng,
+        destAddress: destination!.address,
+        destLat: destination!.lat,
+        destLng: destination!.lng,
+        fare: quote.total,
+      },
+    };
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -279,6 +551,11 @@ export class RidesService {
         throw new BadRequestException('scheduledAt must be a future date');
     }
 
+    // Editing is the second door into a gender restriction. Post an
+    // unrestricted ride, then patch it to FEMALE_ONLY, and the create-time
+    // check would never have run.
+    await this.assertMayRestrictByGender(userId, dto.genderPref);
+
     return this.ridesRepository.update(rideId, {
       ...(dto.fare !== undefined && { fare: dto.fare }),
       ...(dto.seatsAvailable !== undefined && {
@@ -355,7 +632,8 @@ export class RidesService {
     // in search, but never verified — anyone could join a female-only ride by
     // opening it directly.
     if (ride.genderPref !== 'ANY') {
-      const gender = await this.ridesRepository.findRequesterGender(requesterId);
+      const gender =
+        await this.ridesRepository.findRequesterGender(requesterId);
       // Same rule the feed uses, so what you can see and what you can join
       // cannot drift apart.
       if (!visibleGenderPrefs(gender).includes(ride.genderPref)) {

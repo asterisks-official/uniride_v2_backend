@@ -67,6 +67,37 @@ enum ActiveMode {
   RIDER
 }
 
+/// Which way a ride runs relative to campus.
+///
+/// Replaces asking for two addresses: one end of every university commute is
+/// always the campus, so the user names one point and picks a direction. The
+/// legacy dest* columns stay populated from the campus record so v1 clients
+/// keep rendering a destination.
+enum RideDirection {
+  TO_CAMPUS
+  FROM_CAMPUS
+}
+
+/// When a ride is for.
+///
+/// INSTANT means now — posted and pushed to the other side immediately.
+/// SCHEDULED means a stated time, and sits in the feed until someone takes it.
+/// Both sides may post either: a rider leaving this minute is as valid as a
+/// passenger needing one.
+///
+/// Note this is *not* a dispatch flag. Nobody goes online and waits to be
+/// assigned a trip — every posted ride notifies the complementary side, and
+/// whoever wants it takes it.
+///
+/// Explicit rather than inferred from whether a time was given: expiry
+/// behaviour and which screens a ride appears on both branch on this, and
+/// deriving load-bearing state from a null is how those two end up
+/// disagreeing.
+enum RideMode {
+  INSTANT
+  SCHEDULED
+}
+
 enum MessageType {
   TEXT
   SYSTEM
@@ -74,6 +105,10 @@ enum MessageType {
 }
 
 enum NotificationType {
+  /// A new ride has been posted on the other side of the market. This is what
+  /// replaces going online — riders are told when a trip appears rather than
+  /// waiting in the app to be dispatched to.
+  RIDE_POSTED
   RIDE_REQUEST
   REQUEST_ACCEPTED
   REQUEST_DECLINED
@@ -118,82 +153,92 @@ enum PaymentStatus {
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  passwordHash      String    @map("password_hash")
+  id                String     @id @default(uuid())
+  email             String     @unique
+  passwordHash      String     @map("password_hash")
   name              String
   phone             String?
-  profilePictureUrl String?   @map("profile_picture_url")
+  profilePictureUrl String?    @map("profile_picture_url")
+  /// Legacy free-text university. Kept as the backfill source for
+  /// `universityId`; drop once every row is resolved.
   university        String?
-  studentIdNumber   String?   @map("student_id_number")
+  /// Nullable during backfill. NULL means "see everything from live
+  /// universities", which preserves today's behaviour for the ~1,000 accounts
+  /// that predate this column.
+  universityId      String?    @map("university_id")
+  studentIdNumber   String?    @map("student_id_number")
   bio               String?
-  role              UserRole  @default(PASSENGER)
+  role              UserRole   @default(PASSENGER)
   /// Set when the account was created with joinAs=RIDER. Distinct from `role`,
   /// which is the granted capability: this is the *intent*, and it is what
   /// holds a new rider on the application screen until it is approved. Stored
   /// rather than kept on the device because a reinstall or a fresh login must
   /// not be a way around that.
-  signedUpAsRider   Boolean   @default(false) @map("signed_up_as_rider")
+  signedUpAsRider   Boolean    @default(false) @map("signed_up_as_rider")
   /// Nullable so the ~1,000 existing accounts keep working; required for new
   /// signups and collected from older accounts via a one-time prompt.
   gender            Gender?
   activeMode        ActiveMode @default(PASSENGER) @map("active_mode")
-  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
-  isPhoneVerified   Boolean   @default(false) @map("is_phone_verified")
-  isSuspended       Boolean   @default(false) @map("is_suspended")
-  suspendedReason   String?   @map("suspended_reason")
-  deletedAt         DateTime? @map("deleted_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  isEmailVerified   Boolean    @default(false) @map("is_email_verified")
+  isPhoneVerified   Boolean    @default(false) @map("is_phone_verified")
+  isSuspended       Boolean    @default(false) @map("is_suspended")
+  suspendedReason   String?    @map("suspended_reason")
+  deletedAt         DateTime?  @map("deleted_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  riderProfile      RiderProfile?
-  stats             UserStats?
-  devices           UserDevice[]
-  refreshTokens     RefreshToken[]
-  otpVerifications  OtpVerification[]
-  ridesCreated      Ride[]            @relation("CreatedRides")
-  ridesAsRider      Ride[]            @relation("RiderRides")
-  ridesAsPassenger  Ride[]            @relation("PassengerRides")
-  rideRequests      RideRequest[]
-  ratingsGiven      Rating[]          @relation("RatingsGiven")
-  ratingsReceived   Rating[]          @relation("RatingsReceived")
-  notifications     Notification[]
-  reportsSubmitted  Report[]          @relation("ReportsSubmitted")
-  reportsAgainst    Report[]          @relation("ReportsAgainst")
-  payments          Payment[]
+  riderProfile     RiderProfile?
+  stats            UserStats?
+  devices          UserDevice[]
+  refreshTokens    RefreshToken[]
+  otpVerifications OtpVerification[]
+  ridesCreated     Ride[]              @relation("CreatedRides")
+  ridesAsRider     Ride[]              @relation("RiderRides")
+  ridesAsPassenger Ride[]              @relation("PassengerRides")
+  rideRequests     RideRequest[]
+  ratingsGiven     Rating[]            @relation("RatingsGiven")
+  ratingsReceived  Rating[]            @relation("RatingsReceived")
+  notifications    Notification[]
+  reportsSubmitted Report[]            @relation("ReportsSubmitted")
+  reportsAgainst   Report[]            @relation("ReportsAgainst")
+  payments         Payment[]
+  universityRef    University?         @relation(fields: [universityId], references: [id])
+  savedPlaces      SavedPlace[]
+  availability     DriverAvailability?
 
+  @@index([universityId])
   @@map("users")
 }
 
 model RiderProfile {
-  id                 String             @id @default(uuid())
-  userId             String             @unique @map("user_id")
-  vehicleType        String             @map("vehicle_type")
-  vehicleMake        String             @map("vehicle_make")
-  vehicleModel       String             @map("vehicle_model")
-  vehicleYear        Int                @map("vehicle_year")
-  vehicleColor       String             @map("vehicle_color")
-  licensePlate       String             @map("license_plate")
-  licenseDocUrl      String             @map("license_doc_url")
-  vehiclePhotoUrl    String             @map("vehicle_photo_url")
+  id                   String             @id @default(uuid())
+  userId               String             @unique @map("user_id")
+  vehicleType          String             @map("vehicle_type")
+  vehicleMake          String             @map("vehicle_make")
+  vehicleModel         String             @map("vehicle_model")
+  vehicleYear          Int                @map("vehicle_year")
+  vehicleColor         String             @map("vehicle_color")
+  licensePlate         String             @map("license_plate")
+  licenseDocUrl        String             @map("license_doc_url")
+  vehiclePhotoUrl      String             @map("vehicle_photo_url")
   /// Photo of the number plate specifically — the vehicle photo does not
   /// reliably show it, and it is what makes a vehicle identifiable.
-  licensePlatePhotoUrl String?          @map("license_plate_photo_url")
-  studentIdDocUrl    String?            @map("student_id_doc_url")
+  licensePlatePhotoUrl String?            @map("license_plate_photo_url")
+  studentIdDocUrl      String?            @map("student_id_doc_url")
   /// Selfie from the in-app liveness check, and when it passed. Reviewers
   /// compare it against the licence and student ID; nullable because profiles
   /// created before face verification existed have neither.
-  selfieUrl          String?            @map("selfie_url")
-  faceVerifiedAt     DateTime?          @map("face_verified_at")
-  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
-  adminNote          String?            @map("admin_note")
+  selfieUrl            String?            @map("selfie_url")
+  faceVerifiedAt       DateTime?          @map("face_verified_at")
+  verificationStatus   VerificationStatus @default(PENDING) @map("verification_status")
+  adminNote            String?            @map("admin_note")
   /// How many times this application has been rejected. Rejection sends it back
   /// to PENDING for another go; the third one bans the applicant outright.
-  rejectionCount     Int                @default(0) @map("rejection_count")
-  reviewedAt         DateTime?          @map("reviewed_at")
-  reviewedBy         String?            @map("reviewed_by")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
+  rejectionCount       Int                @default(0) @map("rejection_count")
+  reviewedAt           DateTime?          @map("reviewed_at")
+  reviewedBy           String?            @map("reviewed_by")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -229,15 +274,15 @@ model BlockedIdentity {
 }
 
 model UserStats {
-  id               String   @id @default(uuid())
-  userId           String   @unique @map("user_id")
-  ridesCompleted   Int      @default(0) @map("rides_completed")
-  ridesCancelled   Int      @default(0) @map("rides_cancelled")
-  totalRatings     Int      @default(0) @map("total_ratings")
-  averageRating    Float    @default(0) @map("average_rating")
-  trustScore       Int      @default(50) @map("trust_score")
-  totalEarnings    Decimal  @default(0) @map("total_earnings") @db.Decimal(10, 2)
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  ridesCompleted Int      @default(0) @map("rides_completed")
+  ridesCancelled Int      @default(0) @map("rides_cancelled")
+  totalRatings   Int      @default(0) @map("total_ratings")
+  averageRating  Float    @default(0) @map("average_rating")
+  trustScore     Int      @default(50) @map("trust_score")
+  totalEarnings  Decimal  @default(0) @map("total_earnings") @db.Decimal(10, 2)
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -260,13 +305,13 @@ model UserDevice {
 }
 
 model RefreshToken {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  tokenHash   String    @unique @map("token_hash")
-  deviceId    String?   @map("device_id")
-  expiresAt   DateTime  @map("expires_at")
-  revokedAt   DateTime? @map("revoked_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  deviceId  String?   @map("device_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -275,14 +320,14 @@ model RefreshToken {
 }
 
 model OtpVerification {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  otpHash     String   @map("otp_hash")
-  purpose     String
-  attempts    Int      @default(0)
-  expiresAt   DateTime @map("expires_at")
-  usedAt      DateTime? @map("used_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  otpHash   String    @map("otp_hash")
+  purpose   String
+  attempts  Int       @default(0)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -291,31 +336,48 @@ model OtpVerification {
 }
 
 model Ride {
-  id               String           @id @default(uuid())
-  creatorId        String           @map("creator_id")
-  riderId          String?          @map("rider_id")
-  passengerId      String?          @map("passenger_id")
-  type             RideType
-  status           RideStatus       @default(SEARCHING)
-  originAddress    String           @map("origin_address")
-  originLat        Float            @map("origin_lat")
-  originLng        Float            @map("origin_lng")
-  destAddress      String           @map("dest_address")
-  destLat          Float            @map("dest_lat")
-  destLng          Float            @map("dest_lng")
-  fare             Decimal          @map("fare") @db.Decimal(10, 2)
-  seatsAvailable   Int              @default(1) @map("seats_available")
-  genderPref       GenderPreference @default(ANY) @map("gender_pref")
-  scheduledAt      DateTime         @map("scheduled_at")
-  startedAt        DateTime?        @map("started_at")
-  completedAt      DateTime?        @map("completed_at")
-  cancelledAt      DateTime?        @map("cancelled_at")
-  cancelReason     String?          @map("cancel_reason")
-  riderConfirmed   Boolean          @default(false) @map("rider_confirmed")
-  passengerConfirmed Boolean        @default(false) @map("passenger_confirmed")
-  hasSos           Boolean          @default(false) @map("has_sos")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
+  id                 String           @id @default(uuid())
+  creatorId          String           @map("creator_id")
+  riderId            String?          @map("rider_id")
+  passengerId        String?          @map("passenger_id")
+  type               RideType
+  status             RideStatus       @default(SEARCHING)
+  originAddress      String           @map("origin_address")
+  originLat          Float            @map("origin_lat")
+  originLng          Float            @map("origin_lng")
+  /// Legacy destination columns. Still NOT NULL and still written — from the
+  /// campus record on new rides — so v1 clients keep rendering a destination
+  /// until they are retired.
+  destAddress        String           @map("dest_address")
+  destLat            Float            @map("dest_lat")
+  destLng            Float            @map("dest_lng")
+  /// Scoping and geography. Nullable because rides created by v1 clients have
+  /// none, and those rows must keep working.
+  universityId       String?          @map("university_id")
+  campusId           String?          @map("campus_id")
+  direction          RideDirection?
+  /// Server-computed at creation and never recomputed for display: retuning a
+  /// university's coefficients must not reprice last month's rides.
+  fare               Decimal          @map("fare") @db.Decimal(10, 2)
+  seatsAvailable     Int              @default(1) @map("seats_available")
+  /// Defaults to SCHEDULED so every ride that predates dispatch keeps its
+  /// meaning — they were all posts.
+  mode               RideMode         @default(SCHEDULED)
+  genderPref         GenderPreference @default(ANY) @map("gender_pref")
+  /// When the ride is for. On an INSTANT ride this is the moment it was
+  /// requested — kept non-null so ordering, the date filter and the expiry
+  /// job all keep working without a null branch in each. `mode` is what says
+  /// whether it was actually scheduled.
+  scheduledAt        DateTime         @map("scheduled_at")
+  startedAt          DateTime?        @map("started_at")
+  completedAt        DateTime?        @map("completed_at")
+  cancelledAt        DateTime?        @map("cancelled_at")
+  cancelReason       String?          @map("cancel_reason")
+  riderConfirmed     Boolean          @default(false) @map("rider_confirmed")
+  passengerConfirmed Boolean          @default(false) @map("passenger_confirmed")
+  hasSos             Boolean          @default(false) @map("has_sos")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
 
   creator    User          @relation("CreatedRides", fields: [creatorId], references: [id])
   rider      User?         @relation("RiderRides", fields: [riderId], references: [id])
@@ -324,11 +386,17 @@ model Ride {
   messages   RideMessage[]
   ratings    Rating[]
   payments   Payment[]
+  university University?   @relation(fields: [universityId], references: [id])
+  campus     Campus?       @relation(fields: [campusId], references: [id])
+  stops      RideStop[]
 
   @@index([status, scheduledAt])
   @@index([originLat, originLng])
   @@index([creatorId])
   @@index([riderId])
+  /// Serves the proximity feed's non-geographic predicates before the
+  /// bounding box narrows on ride_stops.
+  @@index([universityId, direction, status, scheduledAt])
   @@map("rides")
 }
 
@@ -365,15 +433,15 @@ model RideMessage {
 }
 
 model Rating {
-  id          String   @id @default(uuid())
-  rideId      String   @map("ride_id")
-  raterId     String   @map("rater_id")
-  rateeId     String   @map("ratee_id")
-  score       Int
-  review      String?
-  tags        String[]
-  isRevealed  Boolean  @default(false) @map("is_revealed")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  rideId     String   @map("ride_id")
+  raterId    String   @map("rater_id")
+  rateeId    String   @map("ratee_id")
+  score      Int
+  review     String?
+  tags       String[]
+  isRevealed Boolean  @default(false) @map("is_revealed")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   ride  Ride @relation(fields: [rideId], references: [id])
   rater User @relation("RatingsGiven", fields: [raterId], references: [id])
@@ -402,19 +470,19 @@ model Notification {
 }
 
 model Report {
-  id           String         @id @default(uuid())
-  reporterId   String         @map("reporter_id")
-  reportedId   String         @map("reported_id")
-  rideId       String?        @map("ride_id")
-  type         ReportType
-  severity     ReportSeverity @default(MEDIUM)
-  status       ReportStatus   @default(OPEN)
-  description  String
-  adminNote    String?        @map("admin_note")
-  resolvedAt   DateTime?      @map("resolved_at")
-  resolvedBy   String?        @map("resolved_by")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  id          String         @id @default(uuid())
+  reporterId  String         @map("reporter_id")
+  reportedId  String         @map("reported_id")
+  rideId      String?        @map("ride_id")
+  type        ReportType
+  severity    ReportSeverity @default(MEDIUM)
+  status      ReportStatus   @default(OPEN)
+  description String
+  adminNote   String?        @map("admin_note")
+  resolvedAt  DateTime?      @map("resolved_at")
+  resolvedBy  String?        @map("resolved_by")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
 
   reporter User @relation("ReportsSubmitted", fields: [reporterId], references: [id])
   reported User @relation("ReportsAgainst", fields: [reportedId], references: [id])
@@ -462,4 +530,155 @@ model AppConfig {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_config")
+}
+
+/// Whether a rider is available to be dispatched, and where they are.
+///
+/// Its own table rather than columns on `RiderProfile` because the two have
+/// opposite write profiles: a verification record is written once and read
+/// forever, while this row is overwritten every few seconds by every online
+/// rider. Keeping them apart stops position heartbeats churning the table that
+/// holds licence documents, and lets this one carry the index dispatch needs.
+///
+/// **A row here is a claim, not a fact.** An app killed mid-shift leaves
+/// `isOnline = true` behind with no way to correct it, so dispatch must treat
+/// anything older than [lastSeenAt] + a staleness window as offline. Absence
+/// of a heartbeat is the only honest signal that someone has gone.
+model DriverAvailability {
+  userId   String  @id @map("user_id")
+  isOnline Boolean @default(false) @map("is_online")
+
+  /// Last reported position. Null until the first heartbeat — a rider with no
+  /// position cannot be dispatched to, because there is no way to tell who is
+  /// nearest.
+  lat Float?
+  lng Float?
+
+  /// When that position arrived. The staleness clock.
+  lastSeenAt DateTime? @map("last_seen_at")
+
+  /// Set while carrying a passenger, so dispatch skips them. Nullable rather
+  /// than a status enum because "which trip" is the useful thing to know when
+  /// something goes wrong.
+  activeRideId String? @map("active_ride_id")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Serves the dispatch query: online riders first, then narrowed by a
+  /// bounding box before distance is computed.
+  @@index([isOnline, lat, lng])
+  @@map("driver_availability")
+}
+
+// ─── University scoping and geography ────────────────────────────────────────
+
+/// A university the platform has launched at, and the fare coefficients that
+/// apply to its rides.
+///
+/// Coefficients live here rather than in AppConfig because they are per-market:
+/// the day a second campus in another city goes live, its base fare will not be
+/// Dhaka's. AppConfig still overrides the shared constants (road factor,
+/// average speed) that are not university-specific.
+model University {
+  id             String   @id @default(uuid())
+  name           String
+  shortName      String   @unique @map("short_name")
+  /// Email domains that auto-verify a signup into this university.
+  verifyDomains  String[] @map("verify_domains")
+  /// Fallback when the domain does not match: route to student-ID review.
+  requiresIdCard Boolean  @default(false) @map("requires_id_card")
+
+  /// fare = max(fareMinimum, fareBase + farePerKm × km + farePerMin × min)
+  fareBase   Decimal @default(0) @map("fare_base") @db.Decimal(10, 2)
+  farePerKm  Decimal @default(0) @map("fare_per_km") @db.Decimal(10, 2)
+  /// Currently zero: distance alone sets the price. The term stays so time
+  /// can be switched back on with an UPDATE rather than a deploy.
+  farePerMin Decimal @default(0) @map("fare_per_min") @db.Decimal(10, 2)
+
+  /// Floor under the computed fare.
+  ///
+  /// Distinct from `fareBase`, which is added to every trip: this only bites
+  /// on short ones. Without it a one-kilometre hop prices at barely more than
+  /// the base, and no rider will cross town, wait, and carry someone for that
+  /// — a trip nobody accepts is worse for the passenger than an honest floor.
+  fareMinimum Decimal @default(0) @map("fare_minimum") @db.Decimal(10, 2)
+
+  /// Launch gate. A university with no live campuses shows a waitlist.
+  isLive    Boolean  @default(false) @map("is_live")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  campuses Campus[]
+  users    User[]
+  rides    Ride[]
+
+  @@map("universities")
+}
+
+model Campus {
+  id           String @id @default(uuid())
+  universityId String @map("university_id")
+  name         String
+  /// Free-text address shown to users and copied onto a ride's legacy
+  /// dest* columns so v1 clients still render something sensible.
+  address      String
+  lat          Float
+  lng          Float
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  rides      Ride[]
+
+  @@index([universityId])
+  @@map("campuses")
+}
+
+/// A point the user has named, so posting a ride never needs a map twice.
+///
+/// This is what keeps maps off the critical path: a returning driver picks
+/// "Home" rather than dropping a pin. Coordinates are copied onto the ride at
+/// creation, never referenced, so deleting a place cannot orphan a live ride.
+model SavedPlace {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  label      String
+  lat        Float
+  lng        Float
+  /// Coarse area name ("Mirpur 10") — the only location detail shown before
+  /// both sides have committed to a ride.
+  areaLabel  String    @map("area_label")
+  /// Bumped on use so the compose screen can default to the last one used.
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_places")
+}
+
+/// A point on a ride, with the coarse label shown before either side commits.
+///
+/// Sequence 0 is the pickup, sequence 1 the destination. Modelled as rows
+/// rather than more columns so multi-stop needs no migration later, and so the
+/// proximity query can index and join on `(lat, lng)` for one sequence rather
+/// than scanning the rides table's own coordinates.
+///
+/// `Ride.origin*` / `dest*` still hold the same points as plain columns —
+/// those are NOT NULL and v1 clients read them, so both live side by side
+/// until v1 is retired.
+model RideStop {
+  id        String @id @default(uuid())
+  rideId    String @map("ride_id")
+  sequence  Int    @default(0)
+  lat       Float
+  lng       Float
+  areaLabel String @map("area_label")
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@unique([rideId, sequence])
+  @@index([lat, lng])
+  @@map("ride_stops")
 }

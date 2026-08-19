@@ -6,6 +6,7 @@ import type {
   Prisma,
   RequestStatus,
   Gender,
+  GenderPreference,
 } from '@prisma/client';
 
 const riderSelect = {
@@ -40,6 +41,51 @@ export class RidesRepository {
       select: { gender: true },
     });
     return user?.gender ?? null;
+  }
+
+  /**
+   * Everyone who should hear about a newly posted ride.
+   *
+   * The complementary side: a passenger's request goes to verified riders, a
+   * rider's offer goes to passengers. Never the poster themselves.
+   *
+   * Gender-restricted rides are narrowed here rather than filtered after the
+   * push is queued — a notification is a disclosure, and sending "Ayesha needs
+   * a ride from Mirpur 10 at 8pm" to every man on the platform would leak
+   * exactly what the restriction exists to prevent.
+   */
+  async findRecipientsForNewRide(params: {
+    posterId: string;
+    forRiders: boolean;
+    genderPref: GenderPreference;
+    universityId: string | null;
+  }): Promise<{ id: string }[]> {
+    const { posterId, forRiders, genderPref, universityId } = params;
+
+    return this.prisma.user.findMany({
+      where: {
+        id: { not: posterId },
+        deletedAt: null,
+        isSuspended: false,
+        isEmailVerified: true,
+        ...(forRiders ? { role: 'RIDER' } : {}),
+        // Scoped to the poster's university when they have one, so a DIU
+        // student is not pinged about a trip at another campus.
+        ...(universityId ? { universityId } : {}),
+        // Fails closed, matching visibleGenderPrefs: nobody without a
+        // recorded gender is told about a restricted ride.
+        ...(genderPref === 'FEMALE_ONLY'
+          ? { gender: 'FEMALE' }
+          : genderPref === 'MALE_ONLY'
+            ? { gender: 'MALE' }
+            : {}),
+      },
+      select: { id: true },
+      // A safety valve, not a ranking. One campus will never approach this;
+      // if it ever does, that is the moment to notify by proximity instead of
+      // notifying everyone.
+      take: 500,
+    });
   }
 
   async create(data: Prisma.RideCreateInput): Promise<Ride> {

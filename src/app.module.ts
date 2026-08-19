@@ -10,6 +10,10 @@ import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RidesModule } from './modules/rides/rides.module';
+import { UniversitiesModule } from './modules/universities/universities.module';
+import { PlacesModule } from './modules/places/places.module';
+import { DriversModule } from './modules/drivers/drivers.module';
+import { FareModule } from './modules/fare/fare.module';
 import { MatchingModule } from './modules/matching/matching.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -98,6 +102,10 @@ import {
     AuthModule,
     UsersModule,
     RidesModule,
+    UniversitiesModule,
+    PlacesModule,
+    DriversModule,
+    FareModule,
     MatchingModule,
     ChatModule,
     NotificationsModule,
