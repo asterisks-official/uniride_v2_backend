@@ -113,6 +113,11 @@ enum NotificationType {
   REQUEST_ACCEPTED
   REQUEST_DECLINED
   RIDE_STARTED
+  /// A matched ride was called off before it ran. Its own type rather than
+  /// SYSTEM because somebody is standing at a pickup waiting for it, and a
+  /// client that wants to treat that louder than a generic message needs to
+  /// be able to tell them apart.
+  RIDE_CANCELLED
   RIDE_COMPLETED
   RATING_RECEIVED
   VERIFICATION_APPROVED
@@ -375,6 +380,30 @@ model Ride {
   cancelReason       String?          @map("cancel_reason")
   riderConfirmed     Boolean          @default(false) @map("rider_confirmed")
   passengerConfirmed Boolean          @default(false) @map("passenger_confirmed")
+  /// Where each person actually was when they moved the ride forward.
+  ///
+  /// A ride's origin and destination are what somebody *typed*; these are what
+  /// their phone reported at the moment they pressed the button. The pair is
+  /// the whole point — a trip that was never taken is cheap to claim and
+  /// expensive to disprove without them.
+  ///
+  /// Recorded at all four handshake points rather than two, because it is the
+  /// disagreements that carry the signal: a rider starting a trip from three
+  /// kilometres away from their passenger, or confirming completion from a
+  /// different district, is visible only if both sides are stamped.
+  ///
+  /// Nullable throughout, and never enforced. Location can be denied, a fix
+  /// can time out, and a phone can sit indoors with no signal — none of which
+  /// is grounds to refuse to end someone's ride. Absent means "not known",
+  /// which is a weaker claim than a matching pair but a truthful one.
+  riderStartLat       Float?          @map("rider_start_lat")
+  riderStartLng       Float?          @map("rider_start_lng")
+  passengerStartLat   Float?          @map("passenger_start_lat")
+  passengerStartLng   Float?          @map("passenger_start_lng")
+  riderEndLat         Float?          @map("rider_end_lat")
+  riderEndLng         Float?          @map("rider_end_lng")
+  passengerEndLat     Float?          @map("passenger_end_lat")
+  passengerEndLng     Float?          @map("passenger_end_lng")
   hasSos             Boolean          @default(false) @map("has_sos")
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")

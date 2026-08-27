@@ -27,7 +27,7 @@ import { HealthModule } from './modules/health/health.module';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
-import { RideGateway } from './gateways/ride.gateway';
+import { RealtimeModule } from './gateways/realtime.module';
 import { NotificationProcessor } from './jobs/processors/notification.processor';
 import { RideExpiryProcessor } from './jobs/processors/ride-expiry.processor';
 import { RideCompletionProcessor } from './jobs/processors/ride-completion.processor';
@@ -116,13 +116,13 @@ import {
     AdminModule,
     FirebaseModule,
     HealthModule,
+    RealtimeModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    RideGateway,
     NotificationProcessor,
     RideExpiryProcessor,
     RideCompletionProcessor,

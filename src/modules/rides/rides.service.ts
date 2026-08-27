@@ -22,6 +22,8 @@ import { QuoteRideDto } from './dto/quote-ride.dto';
 import { SearchRidesDto } from './dto/search-rides.dto';
 import { FareService } from '../fare/fare.service';
 import { UniversitiesService } from '../universities/universities.service';
+import { RideGateway } from '../../gateways/ride.gateway';
+import { HandshakeLocationDto } from './dto/handshake-location.dto';
 import { PlacesService } from '../places/places.service';
 import { UpdateRideDto } from './dto/update-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
@@ -98,6 +100,7 @@ export class RidesService {
     private readonly places: PlacesService,
     @InjectQueue(QUEUE_RIDE_EXPIRY) private readonly expiryQueue: Queue,
     @InjectQueue(QUEUE_RIDE_COMPLETION) private readonly completionQueue: Queue,
+    private readonly rideGateway: RideGateway,
   ) {}
 
   // ── Create ─────────────────────────────────────────────────────────────────
@@ -247,6 +250,16 @@ export class RidesService {
     });
     if (recipients.length === 0) return;
 
+    // Live first, push second. Anyone with the app open gets the card without
+    // pulling to refresh; the notification is for everyone else.
+    //
+    // The same recipient list drives both, which is the point of computing it
+    // here — it already encodes the audience rules (complementary side, same
+    // university, gender-safe, never the poster). Deriving the socket audience
+    // separately would be a second place for those rules to drift out of sync,
+    // and the one that leaks is the one nobody tests.
+    await this.broadcastNewRide(ride.id, recipients);
+
     const when =
       ride.mode === 'INSTANT'
         ? 'now'
@@ -271,6 +284,38 @@ export class RidesService {
         ),
       ),
     );
+  }
+
+  /**
+   * Pushes a newly posted ride onto the feed of everyone entitled to see it.
+   *
+   * Sent as the whole ride rather than a bare id: the client can render the
+   * card immediately, and a feed of N new rides stays one message instead of N
+   * round-trips. The shape matches what the feed's own query returns, so the
+   * same parser handles both and a socket-delivered card is indistinguishable
+   * from a fetched one.
+   *
+   * Per-recipient rooms, not a broadcast the clients filter. Gender visibility
+   * is a safety rule, and a rule enforced in the client is not enforced —
+   * anyone can listen to a room they were not meant to be in.
+   *
+   * Never throws. A ride that exists must not be rolled back because a socket
+   * was slow, and the feed still shows it on the next fetch either way.
+   */
+  private async broadcastNewRide(
+    rideId: string,
+    recipients: { id: string }[],
+  ): Promise<void> {
+    try {
+      const ride = await this.ridesRepository.findWithRelations(rideId);
+      if (!ride) return;
+
+      for (const recipient of recipients) {
+        this.rideGateway.emitToUser(recipient.id, 'ride:created', ride);
+      }
+    } catch (err) {
+      this.logger.warn(`Could not broadcast ride ${rideId}`, err);
+    }
   }
 
   /**
@@ -588,6 +633,33 @@ export class RidesService {
       ...(dto.reason && { cancelReason: dto.reason }),
     });
 
+    // A cancelled ride that has already been matched has somebody waiting on
+    // it, and until now nothing told them. Being stood up is bad; being stood
+    // up by a screen that still says "you're matched" is worse — they would
+    // wait at the pickup until they thought to pull to refresh.
+    const both = [ride.riderId, ride.passengerId].filter(Boolean) as string[];
+    const other = both.filter((id) => id !== userId);
+
+    await Promise.all(
+      other.map((id) =>
+        this.notificationsService.send(
+          id,
+          'RIDE_CANCELLED',
+          'Ride cancelled',
+          dto.reason
+            ? `The ride to ${ride.destAddress} was cancelled: ${dto.reason}`
+            : `The ride to ${ride.destAddress} was cancelled`,
+          { rideId },
+        ),
+      ),
+    );
+
+    // Both, the canceller included: the ride is over for the two of them at
+    // the same moment, and neither has any reason to still be looking at it.
+    if (both.length > 0) {
+      this.broadcastRideUpdate(rideId, both, 'ride:cancelled');
+    }
+
     return { message: 'Ride cancelled' };
   }
 
@@ -721,6 +793,16 @@ export class RidesService {
         `Your request to join a ride to ${ride.destAddress} was accepted`,
         { rideId },
       );
+
+      // A match is the one event worth interrupting someone for. The person
+      // who accepted is already looking at the ride; the person who asked may
+      // be anywhere in the app, and telling them to go and find it themselves
+      // is the manual step this is here to remove.
+      //
+      // Its own event, not `ride:updated`: that one only refreshes whatever is
+      // on screen, and a client must never be pulled across the app by an
+      // ordinary state change.
+      this.broadcastRideUpdate(rideId, [req.passengerId], 'ride:matched');
       return { message: 'Request accepted — ride is now matched' };
     }
 
@@ -737,7 +819,11 @@ export class RidesService {
 
   // ── Start ride ─────────────────────────────────────────────────────────────
 
-  async startRide(riderId: string, rideId: string) {
+  async startRide(
+    riderId: string,
+    rideId: string,
+    where?: HandshakeLocationDto,
+  ) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.riderId !== riderId) throw new ForbiddenException();
@@ -745,27 +831,124 @@ export class RidesService {
       throw new ConflictException('Ride must be matched before starting');
     }
 
+    // Stamped, but not yet in progress. The trip begins when the passenger
+    // agrees it has — a rider alone cannot put a ride on the clock, which is
+    // the same rule the completion handshake already applies at the other end.
+    //
+    // No new column for the waiting state: `MATCHED` with a `startedAt` is
+    // exactly "the rider says they have begun and nobody has agreed yet", and
+    // an extra status would have to be handled in every switch that exists.
     const updated = await this.ridesRepository.update(rideId, {
-      status: 'IN_PROGRESS',
       startedAt: new Date(),
+      ...RidesService.locationFields('riderStart', where),
     });
 
     if (ride.passengerId) {
       await this.notificationsService.send(
         ride.passengerId,
         'RIDE_STARTED',
-        'Your ride has started',
-        `Your rider is on the way to ${ride.destAddress}`,
+        'Your rider has started',
+        `Confirm you are on your way to ${ride.destAddress}`,
         { rideId },
       );
+      this.broadcastRideUpdate(rideId, [ride.passengerId]);
     }
 
     return updated;
   }
 
+  /**
+   * The passenger's half of starting: the trip is now genuinely under way.
+   *
+   * Until this lands the ride is still `MATCHED`, which keeps it cancellable
+   * and keeps the fare off the clock. A rider who marks a trip started before
+   * the passenger is on the bike would otherwise be unanswerable.
+   */
+  async confirmStart(
+    userId: string,
+    rideId: string,
+    where?: HandshakeLocationDto,
+  ) {
+    const ride = await this.ridesRepository.findById(rideId);
+    if (!ride) throw new NotFoundException('Ride not found');
+    if (ride.passengerId !== userId) {
+      throw new ForbiddenException('Only the passenger can confirm the start');
+    }
+    if (ride.status !== 'MATCHED') {
+      throw new ConflictException(`Ride is ${ride.status}, not matched`);
+    }
+    if (!ride.startedAt) {
+      throw new ConflictException('The rider has not started this ride yet');
+    }
+
+    const updated = await this.ridesRepository.update(rideId, {
+      status: 'IN_PROGRESS',
+      ...RidesService.locationFields('passengerStart', where),
+    });
+
+    if (ride.riderId) {
+      await this.notificationsService.send(
+        ride.riderId,
+        'RIDE_STARTED',
+        'Ride under way',
+        `Your passenger confirmed the trip to ${ride.destAddress}`,
+        { rideId },
+      );
+      this.broadcastRideUpdate(rideId, [ride.riderId]);
+    }
+
+    return updated;
+  }
+
+  /**
+   * The coordinate columns for one actor, or nothing.
+   *
+   * Both or neither: half a coordinate is not a location, and a stray lat with
+   * no lng would sit in the database looking like evidence.
+   */
+  private static locationFields(
+    prefix: 'riderStart' | 'passengerStart' | 'riderEnd' | 'passengerEnd',
+    where?: HandshakeLocationDto,
+  ): Record<string, number> {
+    if (where?.lat === undefined || where?.lng === undefined) return {};
+    return { [`${prefix}Lat`]: where.lat, [`${prefix}Lng`]: where.lng };
+  }
+
+  /**
+   * Tells the other party's open app that this ride moved on.
+   *
+   * Both halves of a handshake happen on two different phones, so without this
+   * the second person waits on a screen that will never change until they pull
+   * to refresh — which is the whole reason the step feels broken.
+   *
+   * Never throws, for the same reason [broadcastNewRide] does not: a state
+   * change that has already been written must not be undone by a socket.
+   */
+  private broadcastRideUpdate(
+    rideId: string,
+    userIds: string[],
+    event = 'ride:updated',
+  ): void {
+    void (async () => {
+      try {
+        const full = await this.ridesRepository.findWithRelations(rideId);
+        if (!full) return;
+        for (const id of userIds) {
+          this.rideGateway.emitToUser(id, event, full);
+        }
+      } catch (err) {
+        this.logger.warn(`Could not broadcast update for ride ${rideId}`, err);
+      }
+    })();
+  }
+
   // ── Confirm completion ─────────────────────────────────────────────────────
 
-  async confirmRide(userId: string, rideId: string) {
+  async confirmRide(
+    userId: string,
+    rideId: string,
+    where?: HandshakeLocationDto,
+  ) {
     const ride = await this.ridesRepository.findById(rideId);
     if (!ride) throw new NotFoundException('Ride not found');
 
@@ -781,10 +964,12 @@ export class RidesService {
     if (isRider) {
       if (ride.riderConfirmed) throw new ConflictException('Already confirmed');
       updateData['riderConfirmed'] = true;
+      Object.assign(updateData, RidesService.locationFields('riderEnd', where));
     } else {
       if (ride.passengerConfirmed)
         throw new ConflictException('Already confirmed');
       updateData['passengerConfirmed'] = true;
+      Object.assign(updateData, RidesService.locationFields('passengerEnd', where));
     }
 
     const newRiderConfirmed = isRider ? true : ride.riderConfirmed;
@@ -798,6 +983,10 @@ export class RidesService {
 
     const result = await this.ridesRepository.update(rideId, updateData);
 
+    // The other side is waiting on a screen that says "waiting for them".
+    const other = isRider ? ride.passengerId : ride.riderId;
+    if (other) this.broadcastRideUpdate(rideId, [other]);
+
     if (bothConfirmed) {
       await this.completionQueue.add('process', {
         rideId,
@@ -806,6 +995,11 @@ export class RidesService {
       const notifyBoth = [ride.riderId, ride.passengerId].filter(
         Boolean,
       ) as string[];
+
+      // Both, including whoever just tapped: the ride is over for the two of
+      // them at the same instant, and the rating is the last thing either can
+      // still do about it. Its own event, because it navigates.
+      this.broadcastRideUpdate(rideId, notifyBoth, 'ride:completed');
       await Promise.all(
         notifyBoth.map((uid) =>
           this.notificationsService.send(

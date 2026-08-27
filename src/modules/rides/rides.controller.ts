@@ -25,6 +25,7 @@ import { SearchRidesDto } from './dto/search-rides.dto';
 import { UpdateRideDto } from './dto/update-ride.dto';
 import { CancelRideDto } from './dto/cancel-ride.dto';
 import { RequestRideDto } from './dto/request-ride.dto';
+import { HandshakeLocationDto } from './dto/handshake-location.dto';
 import { RespondRequestDto } from './dto/respond-request.dto';
 import { MyRidesDto } from './dto/my-rides.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -179,8 +180,25 @@ export class RidesController {
   startRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
+    @Body() where?: HandshakeLocationDto,
   ) {
-    return this.ridesService.startRide(user.sub, rideId);
+    return this.ridesService.startRide(user.sub, rideId, where);
+  }
+
+  @Patch(':rideId/confirm-start')
+  @ApiOperation({
+    summary: 'Passenger confirms the ride has actually started',
+    description:
+      'A rider marking a ride started only stamps it. The trip enters ' +
+      'IN_PROGRESS — and stops being cancellable — when the passenger agrees ' +
+      'it has begun.',
+  })
+  confirmStart(
+    @CurrentUser() user: JwtPayload,
+    @Param('rideId', ParseUUIDPipe) rideId: string,
+    @Body() where?: HandshakeLocationDto,
+  ) {
+    return this.ridesService.confirmStart(user.sub, rideId, where);
   }
 
   // ── Confirm completion (rider or passenger) ────────────────────────────────
@@ -192,7 +210,8 @@ export class RidesController {
   confirmRide(
     @CurrentUser() user: JwtPayload,
     @Param('rideId', ParseUUIDPipe) rideId: string,
+    @Body() where?: HandshakeLocationDto,
   ) {
-    return this.ridesService.confirmRide(user.sub, rideId);
+    return this.ridesService.confirmRide(user.sub, rideId, where);
   }
 }
