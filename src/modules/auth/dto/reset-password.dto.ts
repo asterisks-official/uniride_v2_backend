@@ -19,7 +19,7 @@ export class ResetPasswordDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: '1234' })
+  @ApiProperty({ example: '123456' })
   @IsString()
   @Length(OTP_LENGTH, OTP_LENGTH)
   otp: string;

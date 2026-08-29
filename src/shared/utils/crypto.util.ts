@@ -41,12 +41,12 @@ export function hashOtp(otp: string): string {
 
 /// Digits in an emailed verification or reset code. Exported so the DTOs that
 /// validate an incoming code cannot drift from the generator.
-export const OTP_LENGTH = 4;
+export const OTP_LENGTH = 6;
 
 /// randomInt, not Math.random: Math.random is a fast non-cryptographic PRNG
-/// whose output is predictable from previous values, which is disqualifying
-/// for anything that stands in for proof of identity. It matters more at four
-/// digits than it did at six, because the space to search is already small.
+/// whose output is derivable from earlier output, which is disqualifying for a
+/// value that stands in for proof of identity. Length is not what saves you
+/// there -- a predictable generator is guessable at any number of digits.
 export function generateOtp(): string {
   const max = 10 ** OTP_LENGTH;
   return String(randomInt(0, max)).padStart(OTP_LENGTH, '0');
