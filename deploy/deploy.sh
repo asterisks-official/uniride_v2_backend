@@ -66,5 +66,14 @@ for i in $(seq 1 30); do
 done
 
 echo "ERROR: health check never returned 200. Recent logs:" >&2
-"${SSH[@]}" 'cd /opt/uniride/deploy && docker compose -f docker-compose.prod.yml logs --tail=80 app caddy'
+# The env file has to be sourced here too. Without it compose cannot interpolate
+# DOMAIN, so the diagnostic itself dies with "required variable DOMAIN is
+# missing" and prints no logs at all -- exactly when you most need them.
+"${SSH[@]}" bash -s <<'REMOTE' >&2
+cd /opt/uniride/deploy
+set -a; source ./secrets/.env.production; set +a
+docker compose -f docker-compose.prod.yml ps
+echo
+docker compose -f docker-compose.prod.yml logs --tail=80 app caddy
+REMOTE
 exit 1
