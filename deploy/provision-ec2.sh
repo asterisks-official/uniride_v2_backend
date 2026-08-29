@@ -43,7 +43,7 @@ SG_ID=$(aws ec2 describe-security-groups \
 if [ "$SG_ID" = "None" ]; then
   log "Creating security group $NAME"
   SG_ID=$(aws ec2 create-security-group --group-name "$NAME" \
-    --description "UniRide backend — HTTP/HTTPS public, SSH restricted" \
+    --description "UniRide backend - HTTP/HTTPS public, SSH restricted" \
     --vpc-id "$VPC_ID" --query 'GroupId' --output text)
 
   # 80 is required for the Let's Encrypt HTTP-01 challenge, not just redirects.
