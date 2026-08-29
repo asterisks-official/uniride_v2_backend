@@ -38,9 +38,35 @@ reachable only on the internal Docker network.
 | `iam/app-s3-policy.json` | Permissions the running app needs (S3 only). |
 | `secrets/` | Generated keys and `.env.production`. **Gitignored — never commit.** |
 
+## Deployer credentials
+
+The scripts act as whichever IAM identity the AWS CLI is configured with. Give
+that a dedicated user rather than reusing a personal one, so the blast radius
+matches `iam/deployer-policy.json`.
+
+Created once, in the console, by an account admin — the deployer policy
+deliberately does not let the deployer create *itself*:
+
+1. **IAM → Policies → Create policy → JSON**, paste `iam/deployer-policy.json`,
+   name it `uniride-deployer`.
+2. **IAM → Users → Create user** `uniride-deployer`, no console access.
+3. Attach the `uniride-deployer` policy, then create an access key
+   ("Command Line Interface").
+
+Then, locally:
+
+```bash
+aws configure --profile uniride       # key, secret, ap-southeast-1, json
+export AWS_PROFILE=uniride
+aws sts get-caller-identity           # must show .../uniride-deployer
+```
+
+Keep `AWS_PROFILE=uniride` exported for every command below.
+
 ## First-time deploy
 
 ```bash
+export AWS_PROFILE=uniride
 export AWS_REGION=ap-southeast-1
 ./deploy/provision-ec2.sh        # ~2 min, prints the public IP + hostname
 ./deploy/create-app-iam-user.sh  # writes S3 credentials into .env.production

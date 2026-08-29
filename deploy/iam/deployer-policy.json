@@ -51,7 +51,9 @@
     {
       "Sid": "ManageUploadsBucket",
       "Effect": "Allow",
-      "Action": ["s3:*"],
+      "Action": [
+        "s3:*"
+      ],
       "Resource": [
         "arn:aws:s3:::uniride-uploads-prod",
         "arn:aws:s3:::uniride-uploads-prod/*"
@@ -62,6 +64,7 @@
       "Effect": "Allow",
       "Action": [
         "iam:CreateUser",
+        "iam:TagUser",
         "iam:GetUser",
         "iam:PutUserPolicy",
         "iam:GetUserPolicy",
