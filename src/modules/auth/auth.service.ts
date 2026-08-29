@@ -243,6 +243,22 @@ export class AuthService {
     };
   }
 
+  /// Registering at login alone is not enough: FCM reissues a token on
+  /// reinstall, on restore to a new device, and periodically of its own
+  /// accord. A user who simply stays signed in would stop receiving push at
+  /// the first rotation, with nothing to show that it had happened.
+  async registerDevice(
+    userId: string,
+    dto: { fcmToken: string; deviceType: string },
+  ): Promise<{ message: string }> {
+    await this.authRepository.upsertUserDevice(
+      userId,
+      dto.fcmToken,
+      dto.deviceType,
+    );
+    return { message: 'Device registered' };
+  }
+
   async refreshTokens(dto: RefreshDto): Promise<AuthTokens> {
     const tokenHash = this.hashToken(dto.refreshToken);
     const stored = await this.authRepository.findRefreshToken(tokenHash);

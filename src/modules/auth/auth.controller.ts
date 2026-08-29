@@ -18,6 +18,7 @@ import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
+import { RegisterDeviceDto } from './dto/register-device.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -77,6 +78,25 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Logged out' })
   logout(@Body() dto: RefreshDto) {
     return this.authService.logout(dto.refreshToken);
+  }
+
+  @Post('devices')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Register or refresh this device for push notifications',
+    description:
+      'Login also registers a device, but FCM rotates tokens on reinstall, ' +
+      'restore, and on its own schedule. Without somewhere to send the new ' +
+      'one, a user who stays signed in silently stops receiving push.',
+  })
+  @ApiResponse({ status: 200, description: 'Device registered' })
+  registerDevice(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RegisterDeviceDto,
+  ) {
+    return this.authService.registerDevice(user.sub, dto);
   }
 
   @Post('forgot-password')
