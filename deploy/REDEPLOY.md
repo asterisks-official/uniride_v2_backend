@@ -165,14 +165,25 @@ gunzip -c backup-2026-08-29.sql.gz \
 ### Hangs on "Waiting for cloud-init to finish", then times out
 
 Your SSH access, not the server. The security group allows port 22 from the one
-public IP you provisioned from, and a consumer ISP rotates that. Re-open it from
-the network you are on now, then re-run the deploy:
+public IP you provisioned from, and a consumer ISP rotates that:
+
+```bash
+./deploy/allow-ssh.sh          # then re-run ./deploy/deploy.sh
+./deploy/allow-ssh.sh --pool   # if the /32 above still times out
+```
+
+The symptom is confusing because a security group **drops** non-matching packets
+instead of refusing them, so a firewall problem is indistinguishable from a host
+that never booted. One command tells them apart — ports 80 and 443 are open to
+the whole internet, so they answer regardless of your address:
 
 ```bash
 source deploy/secrets/host.env
-aws ec2 authorize-security-group-ingress --region $REGION --group-id $SG_ID \
-  --protocol tcp --port 22 --cidr $(curl -fsS https://checkip.amazonaws.com)/32
+curl -sS -o /dev/null --connect-timeout 5 telnet://$PUBLIC_IP:443
 ```
+
+`Connection refused` in milliseconds means the host is alive and reachable and
+your problem is the port 22 rule. A timeout means the host really is down.
 
 ### UnauthorizedOperation or AccessDenied from an aws command
 

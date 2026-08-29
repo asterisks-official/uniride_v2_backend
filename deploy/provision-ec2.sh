@@ -56,7 +56,7 @@ if [ "$SG_ID" = "None" ]; then
   aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
     --ip-permissions \
       "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${MY_IP}/32,Description=\"SSH from deployer\"}]" >/dev/null
-  log "SSH locked to ${MY_IP}/32 — re-run scripts/allow-ssh.sh if your IP changes"
+  log "SSH locked to ${MY_IP}/32 — run ./deploy/allow-ssh.sh if your IP changes"
 else
   log "Security group $SG_ID already exists"
 fi

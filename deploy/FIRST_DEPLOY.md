@@ -198,21 +198,21 @@ without warning. The symptom is `deploy.sh` hanging on *"Waiting for cloud-init
 to finish"* and eventually timing out, which does not look like a firewall
 problem.
 
-Re-open it from the network you are actually on:
+`allow-ssh.sh` handles it:
 
 ```bash
-source deploy/secrets/host.env
-aws ec2 authorize-security-group-ingress --region $REGION --group-id $SG_ID \
-  --protocol tcp --port 22 --cidr $(curl -fsS https://checkip.amazonaws.com)/32
+./deploy/allow-ssh.sh          # this exact address
+./deploy/allow-ssh.sh --pool   # the surrounding /24, if a /32 keeps failing
+./deploy/allow-ssh.sh --list   # what is currently allowed
+./deploy/allow-ssh.sh --prune  # drop the stale rules that accumulate
 ```
 
-Old rules accumulate. Prune them occasionally:
-
-```bash
-aws ec2 describe-security-group-rules --region $REGION \
-  --filters Name=group-id,Values=$SG_ID \
-  --query 'SecurityGroupRules[?FromPort==`22`].[SecurityGroupRuleId,CidrIpv4]' --output table
-```
+Some ISPs egress one machine from several addresses in a pool, so a `/32` that
+works one minute fails the next — `checkip.amazonaws.com` reports whichever one
+answered *that* request, which is not necessarily the one your SSH packets leave
+from. That is what happened here, and it is why `--pool` exists. A `/24` of one
+ISP's customers, against key-only SSH with no password auth, is the usual trade.
+Narrow it again with `--prune` from a stable network.
 
 ---
 
