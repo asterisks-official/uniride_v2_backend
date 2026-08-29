@@ -37,6 +37,8 @@ reachable only on the internal Docker network.
 | `iam/deployer-policy.json` | Permissions the deploying principal needs. |
 | `iam/app-s3-policy.json` | Permissions the running app needs (S3 only). |
 | `secrets/` | Generated keys and `.env.production`. **Gitignored — never commit.** |
+| `FIRST_DEPLOY.md` | Standing the stack up on a fresh account, start to finish. |
+| `REDEPLOY.md` | Shipping a code change, schema change, or config change. |
 
 ## Deployer credentials
 
