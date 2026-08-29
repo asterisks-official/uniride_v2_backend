@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   randomBytes,
+  randomInt,
   createHash,
 } from 'crypto';
 
@@ -38,6 +39,15 @@ export function hashOtp(otp: string): string {
   return createHash('sha256').update(otp).digest('hex');
 }
 
+/// Digits in an emailed verification or reset code. Exported so the DTOs that
+/// validate an incoming code cannot drift from the generator.
+export const OTP_LENGTH = 4;
+
+/// randomInt, not Math.random: Math.random is a fast non-cryptographic PRNG
+/// whose output is predictable from previous values, which is disqualifying
+/// for anything that stands in for proof of identity. It matters more at four
+/// digits than it did at six, because the space to search is already small.
 export function generateOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  const max = 10 ** OTP_LENGTH;
+  return String(randomInt(0, max)).padStart(OTP_LENGTH, '0');
 }

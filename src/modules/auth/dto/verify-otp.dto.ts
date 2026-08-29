@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Length } from 'class-validator';
+import { OTP_LENGTH } from '../../../shared/utils/crypto.util';
 
 export class VerifyOtpDto {
-  @ApiProperty({ example: '123456' })
+  @ApiProperty({ example: '1234' })
   @IsString()
-  @Length(6, 6)
+  @Length(OTP_LENGTH, OTP_LENGTH)
   otp: string;
 }

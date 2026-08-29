@@ -335,7 +335,16 @@ export class AuthService {
       await this.emailService.sendVerificationOtp(user.email, user.name, otp);
     }
 
-    this.logger.log(`[DEV] OTP for ${user.email} (${purpose}): ${otp}`);
+    // The code itself is logged only outside production. The `[DEV]` prefix
+    // used to be decoration on an unconditional log, so every verification and
+    // password-reset code sat in plaintext in the production container logs --
+    // enough on its own to take over any account, since a reset code is the
+    // whole of the reset. Docker's json-file driver keeps those on disk too.
+    if (this.config.get<string>('nodeEnv') !== 'production') {
+      this.logger.log(`[DEV] OTP for ${user.email} (${purpose}): ${otp}`);
+    } else {
+      this.logger.log(`OTP issued for ${user.email} (${purpose})`);
+    }
     return otp;
   }
 
