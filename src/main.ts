@@ -23,8 +23,18 @@ async function bootstrap() {
     }),
   );
 
+  // The console and the public site are both served from uniridebd.com, so
+  // both are allowed. The apex is listed because the landing page shares the
+  // Next app with the console and may call the API from there.
+  //
+  // An explicit list rather than a wildcard: `credentials: true` with a
+  // reflected origin would let any site a signed-in admin visits make
+  // authenticated requests on their behalf.
   app.enableCors({
-    origin: nodeEnv === 'production' ? ['https://admin.uniride.app'] : true,
+    origin:
+      nodeEnv === 'production'
+        ? ['https://admin.uniridebd.com', 'https://uniridebd.com', 'https://www.uniridebd.com']
+        : true,
     credentials: true,
   });
 
