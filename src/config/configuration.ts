@@ -85,7 +85,13 @@ export default () => ({
 
   resend: {
     apiKey: process.env.RESEND_API_KEY,
-    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev',
+    // Every outbound email must come from the verified UniRide domain, so the
+    // fallback is that domain rather than Resend's shared sandbox sender. A
+    // missing env var used to mean mail silently went out as
+    // `onboarding@resend.dev`, which is a deliverability and trust problem
+    // nobody would notice until a student asked why the code came from a
+    // stranger. See EMAIL_DOMAIN in email.service.ts.
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'UniRide <noreply@uniridebd.com>',
   },
 
   sentry: {

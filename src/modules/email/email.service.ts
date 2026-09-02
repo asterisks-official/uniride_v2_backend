@@ -9,6 +9,38 @@ export interface EmailSendResult {
   error?: string;
 }
 
+/**
+ * The only domain UniRide sends mail from.
+ *
+ * Every outbound message — verification codes and password resets alike — has
+ * to come from here. Two reasons, and the second is the one that bites:
+ *
+ * 1. SPF, DKIM and DMARC are published for this domain and nowhere else. A
+ *    sender on any other domain is either unauthenticated or rejected outright.
+ * 2. A password-reset code *is* the reset. A student who learns to accept one
+ *    from an unfamiliar sender has been trained into the exact behaviour a
+ *    phishing attempt relies on.
+ *
+ * The address itself stays configurable — a `noreply@`, a `support@` and a
+ * future `receipts@` are all legitimate — but the domain is not.
+ */
+export const EMAIL_DOMAIN = 'uniridebd.com';
+
+/** Default sender, used when RESEND_FROM_EMAIL is absent. */
+const DEFAULT_FROM = `UniRide <noreply@${EMAIL_DOMAIN}>`;
+
+/**
+ * The domain part of a `From` header, in either form Resend accepts:
+ * `noreply@example.com` or `UniRide <noreply@example.com>`.
+ *
+ * Returns null when nothing that looks like an address is present, which is
+ * itself a misconfiguration worth reporting.
+ */
+export function senderDomain(from: string): string | null {
+  const match = /<?([^\s<>@]+)@([^\s<>]+?)>?\s*$/.exec(from.trim());
+  return match ? match[2].toLowerCase() : null;
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -18,11 +50,25 @@ export class EmailService {
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('resend.apiKey');
-    this.from = this.config.get<string>(
-      'resend.fromEmail',
-      'onboarding@resend.dev',
-    );
+    this.from = this.config.get<string>('resend.fromEmail', DEFAULT_FROM);
     this.isDev = this.config.get<string>('nodeEnv') !== 'production';
+
+    // Checked at boot rather than per-send: a wrong sender domain is a
+    // deployment mistake, and the useful moment to hear about it is when the
+    // container starts, not scattered across every registration that follows.
+    //
+    // Logged rather than thrown. Refusing to boot would take the whole API
+    // down over mail configuration, which is a worse outage than sending from
+    // the wrong address — but this is loud enough to act on, and env
+    // validation already rejects a bad value before it reaches here.
+    const domain = senderDomain(this.from);
+    if (domain !== EMAIL_DOMAIN) {
+      this.logger.error(
+        `RESEND_FROM_EMAIL is "${this.from}" (domain: ${domain ?? 'unparseable'}). ` +
+          `All UniRide mail must be sent from @${EMAIL_DOMAIN} — ` +
+          `anything else is unauthenticated by SPF/DKIM and will be spam-filed or rejected.`,
+      );
+    }
 
     if (apiKey) {
       this.resend = new Resend(apiKey);
@@ -165,6 +211,7 @@ export class EmailService {
           <tr>
             <td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #f3f4f6;text-align:center;">
               <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; 2026 UniRide · University Ride Sharing Platform</p>
+              <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;">This email was sent by uniridebd.com. UniRide will never ask you for your code.</p>
             </td>
           </tr>
 

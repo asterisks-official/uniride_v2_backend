@@ -100,7 +100,12 @@ Expected: HTTP **201** with a JSON body containing `accessToken`
 
 ## Still to do after this (separate issue)
 
-OTP **emails won't deliver** in production until Resend is configured with a
-verified sending domain: set `RESEND_FROM_EMAIL` to an address on a domain you've
-verified in the Resend dashboard. Until then, signup succeeds but the code never
-arrives by email (and `devOtp` is only returned when `NODE_ENV` ≠ `production`).
+OTP **emails won't deliver** in production until `uniridebd.com` is verified in
+the Resend dashboard and the DKIM/SPF records Resend issues are published in
+DNS. Until then, signup succeeds but the code never arrives by email (and
+`devOtp` is only returned when `NODE_ENV` ≠ `production`).
+
+`RESEND_FROM_EMAIL` must be an address on `uniridebd.com` — the default is
+`UniRide <noreply@uniridebd.com>`, and env validation rejects any other domain
+at boot. The local part is free to change (`support@`, `receipts@`); the domain
+is not. See `EMAIL_DOMAIN` in `src/modules/email/email.service.ts`.

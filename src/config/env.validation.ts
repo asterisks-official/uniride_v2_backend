@@ -25,7 +25,23 @@ export const envValidationSchema = Joi.object({
   FIREBASE_CLIENT_EMAIL: Joi.string().email().optional(),
 
   RESEND_API_KEY: Joi.string().optional(),
-  RESEND_FROM_EMAIL: Joi.string().optional(),
+  // Optional, but if set it must be on the UniRide domain. Accepts both
+  // `noreply@uniridebd.com` and `UniRide <noreply@uniridebd.com>`.
+  //
+  // Rejected at boot rather than warned about: a sender on the wrong domain
+  // fails SPF/DKIM, so those emails do not quietly look odd — they land in
+  // spam or bounce, and OTP delivery is the one flow a new user cannot get
+  // past. Failing here is a five-second fix; discovering it from a support
+  // ticket is not. See EMAIL_DOMAIN in modules/email/email.service.ts.
+  RESEND_FROM_EMAIL: Joi.string()
+    // Case-insensitive: domains are, and "UniRideBD.com" is a perfectly
+    // legitimate way to write it that should not fail a deploy.
+    .pattern(/@uniridebd\.com>?\s*$/i)
+    .optional()
+    .messages({
+      'string.pattern.base':
+        'RESEND_FROM_EMAIL must send from @uniridebd.com (e.g. "UniRide <noreply@uniridebd.com>")',
+    }),
 
   SENTRY_DSN: Joi.string().optional(),
   // Optional: place search falls back to a static Dhaka area list without it.
